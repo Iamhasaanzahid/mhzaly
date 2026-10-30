@@ -601,21 +601,6 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
         mats.overlay
       );
       addBand(overlayGroup, 0.20 * fs, 0.98, 0.92, 0.008, mats.overlay);
-    } else if (b === "trousers" || b === "jeans") {
-      const slim = b === "jeans";
-      const rTop = (her ? (slim ? 0.066 : 0.070) : (slim ? 0.068 : 0.072)) * fs;
-      const rBottom = (her ? (slim ? 0.056 : 0.060) : (slim ? 0.058 : 0.062)) * fs;
-      const cx = her ? 0.095 : 0.10;
-      for (const side of [-1, 1]) {
-        addOverlayMesh(
-          overlayGroup,
-          drapedCylinder(rTop, rBottom, 0.84, 26, 12, 4, 0.004),
-          [side * cx, 0.535, 0],
-          [1, 1, 0.98],
-          null,
-          mats.overlay
-        );
-      }
     } else if (her && b === "churidar") {
       for (const side of [-1, 1]) {
         addOverlayMesh(
