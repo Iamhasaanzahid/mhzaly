@@ -1121,7 +1121,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
     modelGrid.innerHTML = MODELS.map((m) => `
       <div class="card ${state.model.id === m.id ? "is-selected" : ""}" data-model="${m.id}">
         <div class="card-media">
-          <img src="${m.image}" alt="${m.name}" loading="lazy" />
+          <img src="${m.image}" alt="${m.name}" loading="eager" decoding="async" />
           <span class="card-tag">${m.gender === "her" ? "Women" : "Men"}</span>
         </div>
         <div class="card-copy"><h3>${m.name}</h3><p>${m.tag}</p></div>
