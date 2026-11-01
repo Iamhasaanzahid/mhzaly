@@ -311,17 +311,18 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
   let overlayGroup = null;
   let loadToken = 0;
 
-  function poseAvatar(root) {
+  function poseAvatar(root, gender) {
     const bones = {};
     root.traverse((o) => { if (o.isBone) bones[o.name] = o; });
-    if (bones.LeftArm) bones.LeftArm.rotation.set(1.25, 0, 0);
-    if (bones.RightArm) bones.RightArm.rotation.set(1.25, 0, 0);
+    const armDown = gender === "her" ? 1.17 : 1.25;
+    if (bones.LeftArm) bones.LeftArm.rotation.set(armDown, 0, 0);
+    if (bones.RightArm) bones.RightArm.rotation.set(armDown, 0, 0);
     if (bones.LeftForeArm) bones.LeftForeArm.rotation.set(0.12, 0, 0);
     if (bones.RightForeArm) bones.RightForeArm.rotation.set(0.12, 0, 0);
   }
 
-  function prepareAvatar(root) {
-    poseAvatar(root);
+  function prepareAvatar(root, gender) {
+    poseAvatar(root, gender);
     root.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
@@ -329,6 +330,24 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
       o.frustumCulled = false;
       if (o.name === "Wolf3D_Glasses") o.visible = false;
       if (o.name === "Wolf3D_Outfit_Footwear") o.material = footwearMat;
+      if (o.name === "Wolf3D_Outfit_Bottom") {
+        // flatten the belt / belt-loops so a long tunic can sit smoothly over them
+        const pos = o.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const y = pos.getY(i);
+          if (y >= 0.95 && y <= 1.08) {
+            const x = pos.getX(i), z = pos.getZ(i);
+            const r = Math.hypot(x, z);
+            if (r > 0.130) {
+              const k = 0.130 / r;
+              pos.setX(i, x * k);
+              pos.setZ(i, z * k);
+            }
+          }
+        }
+        pos.needsUpdate = true;
+        o.geometry.computeBoundingSphere();
+      }
       if (o.name === "Wolf3D_Outfit_Top") o.userData.role = "top";
       if (o.name === "Wolf3D_Outfit_Bottom") o.userData.role = "bottom";
       if (o.userData.role) {
@@ -345,15 +364,15 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
     if (avatarCache[gender]) return avatarCache[gender];
     const gltf = await loader.loadAsync(AVATAR_URL[gender]);
     const root = gltf.scene;
-    prepareAvatar(root);
+    prepareAvatar(root, gender);
     avatarCache[gender] = root;
     return root;
   }
 
-  async function setModel(model) {
+  async function setModel(model, garmentOverride) {
     state.model = model;
     state.gender = model.gender;
-    state.garment = model.garment;
+    state.garment = garmentOverride || model.garment;
     state.bottom = "auto";
     state.bottomTone = "auto";
     state.fit = "regular";
@@ -394,6 +413,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
     if (!avatar) return;
     const b = effectiveBottom();
     const fittedBottom = ["trousers", "jeans", "churidar", "leggings"].includes(b);
+    const fabricBottom = fittedBottom || b === "shalwar";
     const af = avatarFit();
     const mats = bottomMaterials();
     avatar.traverse((o) => {
@@ -408,7 +428,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
           return;
         }
         o.visible = true;
-        o.material = fittedBottom ? mats.mesh : o.userData.originalMat;
+        o.material = fabricBottom ? mats.mesh : o.userData.originalMat;
         if (base) {
           const s = fittedBottom ? af : 1;
           o.scale.set(base.x * s, base.y, base.z * s);
@@ -427,7 +447,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
       const t = (v.y + height / 2) / height;
       const ang = Math.atan2(v.z, v.x);
       const r = Math.hypot(v.x, v.z);
-      const wave = Math.sin(ang * folds + t * 2.4) * depth * (0.35 + 0.65 * (1 - t));
+      const wave = Math.sin(ang * folds + t * 2.4) * depth * (1 - t);
       const nr = r + wave;
       v.x = Math.cos(ang) * nr;
       v.z = Math.sin(ang) * nr;
@@ -449,7 +469,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
       const ang = Math.atan2(v.z, v.x);
       const r = Math.hypot(v.x, v.z);
       const t = (v.y - yMin) / (yMax - yMin);
-      const wave = Math.sin(ang * folds + t * 2.4) * depth * (0.35 + 0.65 * (1 - t));
+      const wave = Math.sin(ang * folds + t * 2.4) * depth * (1 - t);
       const nr = r + wave;
       v.x = Math.cos(ang) * nr;
       v.z = Math.sin(ang) * nr;
@@ -510,8 +530,8 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
       [Math.PI / 2, 0, 0]
     );
     const lapels = (y) => {
-      addOverlayMesh(overlayGroup, new THREE.BoxGeometry(0.055 * fs, 0.24, 0.012), [-0.072 * fs, y, 0.17], null, [0, 0, -0.18]);
-      addOverlayMesh(overlayGroup, new THREE.BoxGeometry(0.055 * fs, 0.24, 0.012), [0.072 * fs, y, 0.17], null, [0, 0, 0.18]);
+      addOverlayMesh(overlayGroup, new THREE.BoxGeometry(0.055 * fs, 0.22, 0.012), [-0.075 * fs, y, 0.145], null, [0, 0, -0.16]);
+      addOverlayMesh(overlayGroup, new THREE.BoxGeometry(0.055 * fs, 0.22, 0.012), [0.075 * fs, y, 0.145], null, [0, 0, 0.16]);
     };
     const tunic = (profile, zs, folds = 9, depth = 0.008) => {
       const scaled = profile.map(([r, y]) => [r * fs, y]);
@@ -520,74 +540,81 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
     if (!her) {
       if (g === "overshirt") {
-        top(0.205, 0.225, 0.64, 1.10, 0.76, 7, 0.007, 0.62);
-        lapels(1.30);
-        collar(0.095, 1.43);
+        top(0.19, 0.20, 0.62, 1.13, 0.80, 7, 0.007, 0.62);
+        lapels(1.34);
       } else if (g === "kurta") {
-        tunic([[0.255,0.47],[0.235,0.70],[0.215,0.95],[0.205,1.20],[0.21,1.36],[0.205,1.44]], 0.74, 9, 0.009);
-        collar(0.09, 1.44);
+        tunic([[0.205,0.47],[0.20,0.60],[0.196,0.72],[0.19,0.84],[0.19,0.93],[0.175,1.00],[0.158,1.03],[0.143,1.06],[0.138,1.10]], 0.90, 9, 0.008);
+        band(0.205, 0.47, 0.80);
       } else if (g === "pathani") {
-        tunic([[0.245,0.61],[0.225,0.80],[0.21,1.00],[0.205,1.20],[0.21,1.36],[0.205,1.44]], 0.75, 8, 0.008);
-        collar(0.09, 1.44);
+        tunic([[0.195,0.61],[0.193,0.72],[0.19,0.83],[0.185,0.92],[0.19,0.96],[0.175,1.00],[0.158,1.03],[0.143,1.06],[0.138,1.10]], 0.90, 8, 0.008);
+        band(0.195, 0.61, 0.80);
       } else if (g === "shalwar") {
-        tunic([[0.25,0.66],[0.23,0.82],[0.21,1.00],[0.205,1.20],[0.21,1.36],[0.205,1.44]], 0.75, 8, 0.008);
-        collar(0.09, 1.44);
+        tunic([[0.205,0.50],[0.20,0.62],[0.196,0.74],[0.19,0.86],[0.19,0.93],[0.175,1.00],[0.158,1.03],[0.143,1.06],[0.138,1.10]], 0.90, 9, 0.008);
+        band(0.205, 0.50, 0.80);
       } else if (g === "sherwani") {
-        tunic([[0.26,0.345],[0.245,0.55],[0.22,0.80],[0.21,1.00],[0.205,1.20],[0.215,1.36],[0.21,1.44]], 0.73, 10, 0.009);
-        collar(0.092, 1.45);
-        lapels(1.28);
-      } else if (g === "bandhgala") {
-        tunic([[0.245,0.505],[0.23,0.70],[0.21,0.90],[0.205,1.10],[0.21,1.30],[0.205,1.44]], 0.74, 9, 0.008);
-        collar(0.09, 1.44);
-      } else if (g === "blazer") {
-        top(0.21, 0.235, 0.74, 1.06, 0.76, 7, 0.007, 0.92);
+        tunic([[0.215,0.345],[0.21,0.50],[0.205,0.65],[0.20,0.78],[0.19,0.93],[0.175,1.00],[0.158,1.03],[0.143,1.06],[0.138,1.10]], 0.88, 10, 0.008);
+        band(0.215, 0.345, 0.78);
         lapels(1.30);
-        collar(0.095, 1.43);
+      } else if (g === "bandhgala") {
+        tunic([[0.195,0.505],[0.192,0.62],[0.19,0.74],[0.186,0.86],[0.19,0.93],[0.175,1.00],[0.158,1.03],[0.143,1.06],[0.138,1.10]], 0.90, 9, 0.008);
+        band(0.195, 0.505, 0.80);
+      } else if (g === "blazer") {
+        top(0.19, 0.20, 0.70, 1.10, 0.80, 7, 0.007, 0.92);
+        lapels(1.34);
       } else if (g === "waistcoat") {
-        top(0.20, 0.19, 0.46, 1.21, 0.74, 6, 0.005);
-        collar(0.10, 1.44);
+        top(0.180, 0.175, 0.50, 1.20, 0.78, 6, 0.005);
+        band(0.175, 0.95, 0.78);
       }
     } else {
       if (g === "kurti") {
-        tunic([[0.235,0.86],[0.215,1.02],[0.205,1.20],[0.21,1.36],[0.205,1.44]], 0.76, 7, 0.007);
-        collar(0.088, 1.44);
+        // short tunic — the avatar's own fitted top already sits at hip length
       } else if (g === "kurta") {
-        tunic([[0.245,0.50],[0.225,0.70],[0.21,0.90],[0.205,1.10],[0.21,1.30],[0.205,1.44]], 0.74, 9, 0.009);
-        collar(0.088, 1.44);
+        tunic([[0.195,0.50],[0.192,0.62],[0.195,0.74],[0.196,0.86],[0.198,0.93],[0.198,0.96],[0.190,0.99],[0.180,1.02],[0.172,1.06],[0.160,1.10]], 0.90, 9, 0.008);
+        band(0.195, 0.50, 0.80);
       } else if (g === "shalwar") {
-        tunic([[0.24,0.69],[0.225,0.84],[0.21,1.00],[0.205,1.20],[0.21,1.36],[0.205,1.44]], 0.76, 8, 0.008);
-        collar(0.088, 1.44);
+        tunic([[0.195,0.55],[0.192,0.66],[0.195,0.77],[0.196,0.87],[0.198,0.93],[0.198,0.96],[0.190,0.99],[0.180,1.02],[0.172,1.06],[0.160,1.10]], 0.90, 9, 0.008);
+        band(0.195, 0.55, 0.80);
       } else if (g === "anarkali") {
-        top(0.19, 0.205, 0.42, 1.19, 0.78, 6, 0.005);
-        top(0.205, 0.42, 0.94, 0.57, 0.9, 12, 0.014);
-        band(0.205, 1.02, 0.9);
-        collar(0.086, 1.44);
+        tunic([[0.42,0.10],[0.36,0.25],[0.30,0.42],[0.25,0.60],[0.22,0.78],[0.205,0.90],[0.20,0.95],[0.19,0.99],[0.172,1.04],[0.165,1.08]], 0.90, 12, 0.012);
+        band(0.42, 0.10, 0.90);
       } else if (g === "lehenga") {
-        top(0.215, 0.44, 0.86, 0.55, 0.9, 12, 0.014);
-        band(0.215, 0.98, 0.9);
+        tunic([[0.44,0.12],[0.38,0.28],[0.32,0.45],[0.26,0.62],[0.225,0.78],[0.205,0.90],[0.20,0.95],[0.19,0.99],[0.172,1.04],[0.165,1.08]], 0.90, 12, 0.012);
+        band(0.44, 0.12, 0.90);
       } else if (g === "saree") {
-        top(0.205, 0.34, 0.88, 0.54, 0.9, 11, 0.012);
-        band(0.205, 0.98, 0.9);
+        tunic([[0.34,0.10],[0.30,0.28],[0.26,0.46],[0.225,0.64],[0.21,0.80],[0.202,0.90],[0.198,0.95],[0.19,0.99],[0.170,1.04],[0.165,1.08]], 0.90, 11, 0.010);
+        band(0.34, 0.10, 0.90);
         addOverlayMesh(overlayGroup, new THREE.BoxGeometry(0.11 * fs, 0.62, 0.03), [0.105, 1.13, 0.13], null, [0, 0, 0.22]);
       } else if (g === "dress") {
-        top(0.205, 0.36, 1.26, 0.70, 0.82, 11, 0.010);
-        band(0.205, 1.33, 0.82);
+        tunic([[0.36,0.07],[0.32,0.24],[0.27,0.42],[0.235,0.60],[0.215,0.78],[0.205,0.90],[0.20,0.95],[0.19,0.99],[0.170,1.04],[0.165,1.08]], 0.82, 11, 0.010);
+        band(0.36, 0.07, 0.82);
       } else if (g === "sharara") {
-        tunic([[0.235,0.82],[0.22,0.98],[0.21,1.16],[0.21,1.36],[0.205,1.44]], 0.76, 8, 0.008);
         for (const side of [-1, 1]) {
-          addOverlayMesh(overlayGroup, drapedCylinder(0.12 * fs, 0.21 * fs, 0.84, 30, 14, 6, 0.009), [side * 0.105, 0.535, 0], [1, 1, 0.95]);
+          addOverlayMesh(overlayGroup, drapedCylinder(0.12 * fs, 0.19 * fs, 0.80, 30, 14, 6, 0.008), [side * 0.10, 0.55, 0], [1, 1, 0.95]);
+          addOverlayMesh(overlayGroup, new THREE.TorusGeometry(0.19 * fs, 0.010, 8, 30), [side * 0.10, 0.152, 0], [1, 1, 0.95], [Math.PI / 2, 0, 0]);
         }
       }
     }
 
     if (b === "shalwar") {
+      const legProfile = [
+        [0.050, 0.105], [0.065, 0.140], [0.095, 0.260],
+        [0.120, 0.400], [0.100, 0.550], [0.098, 0.750], [0.085, 0.955],
+      ].map(([r, y]) => [r * fs, y]);
       for (const side of [-1, 1]) {
         addOverlayMesh(
           overlayGroup,
-          drapedCylinder(0.088 * fs, 0.096 * fs, 0.84, 30, 14, 6, 0.008),
-          [side * 0.115, 0.535, 0],
-          [1, 1, 0.94],
+          drapedLathe(legProfile, 10, 0.010),
+          [side * 0.09, 0, 0],
+          [0.94, 1, 0.96],
           null,
+          mats.overlay
+        );
+        addOverlayMesh(
+          overlayGroup,
+          new THREE.TorusGeometry(0.052 * fs, 0.010, 8, 24),
+          [side * 0.09, 0.112, 0],
+          [0.94, 1, 0.96],
+          [Math.PI / 2, 0, 0],
           mats.overlay
         );
       }
@@ -1294,7 +1321,9 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
   renderLooks();
   loadSample("linen");
   aiStatus.textContent = "3D engine ready";
-  setModel(MODELS[0]);
+  const startParams = new URLSearchParams(location.search);
+  const startModel = MODELS.find((m) => m.id === startParams.get("m")) || MODELS[0];
+  setModel(startModel, startParams.get("g") || undefined);
   animate();
 
   window.__cloth = {
