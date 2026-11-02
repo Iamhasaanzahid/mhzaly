@@ -521,6 +521,18 @@ If the user picks Auto, infer the best category and placement from the image hin
       }
 
       // Always works: local plan when the free provider is down or rate-limited.
+      function cleanPlan(p) {
+        const cat = String(p.category || "").toLowerCase();
+        if (!cat || cat.includes("|")) {
+          p.category = selectedOption !== "Auto" ? selectedOption.toLowerCase() : "3d asset";
+        }
+        const pl = String(p.placement || "").toLowerCase();
+        if (!pl || pl.includes("|")) {
+          p.placement = /kurta|shirt|suit|dress|saree|shalwar|tunic/.test(p.category) ? "body" : "floor";
+        }
+        return p;
+      }
+
       function localPlan() {
         const raw = `${selectedOption} ${selectedFile ? selectedFile.name : ""} ${arPrompt.value}`.toLowerCase();
         const map = [
@@ -612,6 +624,7 @@ If the user picks Auto, infer the best category and placement from the image hin
             try { plan = await freeAiPlan(prompt); }
             catch { plan = localPlan(); }
           }
+          plan = cleanPlan(plan);
 
           setStep(2);
           await new Promise((r) => setTimeout(r, 600));
