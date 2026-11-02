@@ -9,14 +9,41 @@ lifetime free nahi deta). Domain ~$10–12/saal hai, email $0.
 
 ---
 
+## 0. Fast path (automated)
+
+Domain Cloudflare par le liya? Phir bas 3 commands:
+
+```bash
+cp scripts/email.env.example .env.email   # token + Zoho values bharo
+set -a; . ./.env.email; set +a
+DRY_RUN=1 bash scripts/setup_email_dns.sh   # preview
+bash scripts/setup_email_dns.sh             # apply
+make email-check                            # verify
+```
+
+`setup_email_dns.sh` khud TXT-verification, 3 MX, SPF, DKIM, DMARC publish karta hai
+aur ghalat MX records clean karta hai (`FORCE=1`). Dobara chalane par duplicate
+records nahi bante.
+
+---
+
 ## 1. Options (pick one)
 
 | Option | Cost | Real inbox? | Add more later | Verdict |
 |---|---|---|---|---|
-| **A. `mhzaly.com` + Cloudflare DNS + Zoho Mail Free** | ~$10/yr domain, mail free | ✅ 5 users | 5 tak users, unlimited aliases via Cloudflare | **Recommended** |
+| **A. `mhzaly.com` + Cloudflare DNS + Zoho Mail Free** | ~$10/yr domain, mail free | ✅ 5 users | 5 tak users + Zoho aliases | **Recommended** |
 | **B. `mhzaly.eu.org` (eu.org free domain) + same stack** | $0 forever | ✅ | Same as A | 100% free, approval 2–6 weeks |
-| **C. Cloudflare Email Routing only (forward to Gmail)** | $0 | ❌ forward only | Unlimited aliases (200 rules) | Sirf receive; sending alag |
+| **C. Cloudflare Email Routing only (forward to Gmail)** | $0 | ❌ forward only | 200 rules | Sirf receive; sending alag |
 | **D. Free mailbox abhi (Gmail/Zoho personal)** | $0 | ✅ | — | `mhzaly@` nahi milega |
+
+### ⚠️ MX conflict (ye galti mat karna)
+Cloudflare Email Routing aur Zoho **ek hi domain par saath nahi chal sakte** —
+Email Routing apne MX (`route1.mx.cloudflare.net`) set karta hai, jo Zoho ke MX
+replace kar dega aur inbox band ho jayega. Ek domain = ek mail provider.
+
+Agar dono chahiye to **subdomain** use karo: root `mhzaly.com` → Zoho,
+`contact.mhzaly.com` → Cloudflare Email Routing. Aliases wahan forward honge.
+
 
 ### Zoho Mail Free plan (2026)
 - 5 users, 5 GB each, 1 domain, webmail + iOS/Android app.
@@ -94,9 +121,12 @@ Zoho Admin → Users → Add User → `sales@mhzaly.com`. 5 tak free.
 **Sirf alias (same inbox, extra address):**
 Zoho Admin → Mail Aliases → `billing@`, `noreply@`, `careers@` → `mhzaly@` par deliver.
 
-**Unlimited public aliases (Cloudflare, free):**
-Cloudflare → Email → Email Routing → Custom addresses → `hello@`, `press@`…
-Zoho mailbox ya Gmail par forward. Isse 200 tak addresses bina extra cost.
+**Bohat saare public aliases (200 tak, free):**
+Root domain par nahi (MX conflict, upar dekho). Subdomain banao:
+1. Cloudflare → DNS → add `contact` (ya `mail`) — koi bhi A record, proxy off.
+2. Cloudflare → Email → Email Routing → **Enable** → subdomain `contact.mhzaly.com` chuno.
+3. Custom addresses: `hello@contact.mhzaly.com`, `press@contact.mhzaly.com` → Zoho/Gmail par forward.
+4. Root `mhzaly.com` ka MX Zoho hi rahega — inbox safe.
 
 ---
 
@@ -131,13 +161,18 @@ Zoho free SMTP nahi deta, is liye free relay use karo:
 
 ```bash
 # 1. Domain registered?
-whois mhzaly.com | grep -i "no match" && echo "BUY DOMAIN FIRST"
+bash scripts/check_email_dns.sh mhzaly.com      # or: make email-check
 
 # 2. Nameservers Cloudflare par?
 dig NS mhzaly.com +short
 
-# 3. Mail records live?
-bash scripts/check_email_dns.sh mhzaly.com
+# 3. Records publish karo (Cloudflare token + Zoho values ke baad)
+set -a; . ./.env.email; set +a
+DRY_RUN=1 bash scripts/setup_email_dns.sh       # preview
+bash scripts/setup_email_dns.sh                 # apply
+
+# 4. Re-verify
+make email-check
 ```
 
 Full green output ka matlab: mail receive + send + spam protection sab ready hai.
@@ -151,7 +186,7 @@ Full green output ka matlab: mail receive + send + spam protection sab ready hai
 | Domain `.com` (Cloudflare at-cost) | ~$10.46/yr |
 | DNS (Cloudflare Free) | $0 |
 | Mailboxes (Zoho Free, 5 users) | $0 |
-| Aliases (Cloudflare Email Routing) | $0 |
+| Aliases (Zoho aliases + Cloudflare subdomain routing) | $0 |
 | Sending relay (Brevo free tier) | $0 |
 | **Total** | **~$10/yr, baaki lifetime free** |
 

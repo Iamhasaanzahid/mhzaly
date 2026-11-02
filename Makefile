@@ -1,8 +1,9 @@
 SHELL := /bin/bash
 COMPOSE := docker compose -f deploy/docker-compose.yml
 PY := python3
+DOMAIN ?= mhzaly.com
 
-.PHONY: help install test test-integration lint security up down logs certs secrets seed openapi clean
+.PHONY: help install test test-integration lint security up down logs certs secrets seed openapi clean email-check email-dns
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -47,6 +48,13 @@ seed: ## Provision tenant + admin (usage: make seed SLUG=acme EMAIL=a@b.c NAME="
 	@test -n "$${ADMIN_PASSWORD}" || (echo "ADMIN_PASSWORD is required"; exit 1)
 	ADMIN_PASSWORD="$${ADMIN_PASSWORD}" \
 	$(COMPOSE) --profile tools run --rm seed --slug "$(SLUG)" --name "$(NAME)" --email "$(EMAIL)"
+
+email-check: ## Check MX/SPF/DKIM/DMARC for the company domain
+	bash scripts/check_email_dns.sh $(DOMAIN)
+
+email-dns: ## Publish Zoho mail DNS records on Cloudflare (needs .env.email)
+	@test -f .env.email || (echo "Missing .env.email — copy scripts/email.env.example"; exit 1)
+	set -a; . ./.env.email; set +a; bash scripts/setup_email_dns.sh
 
 clean: ## Remove local caches
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +

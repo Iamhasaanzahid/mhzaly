@@ -148,6 +148,23 @@
                     <button class="ar-btn" id="ar-generate-btn" disabled>Generate with AI</button>
                     <span class="ar-file-name" id="ar-file-name">No image selected</span>
                   </div>
+                  <details class="ar-ai-settings">
+                    <summary>AI settings — use your own free key (optional)</summary>
+                    <div class="ar-ai-body">
+                      <select id="ar-provider" aria-label="AI provider">
+                        <option value="free">Free (no key) — default</option>
+                        <option value="openrouter">OpenRouter (free models)</option>
+                        <option value="groq">Groq (free tier)</option>
+                        <option value="gemini">Google Gemini (free tier)</option>
+                        <option value="custom">Custom OpenAI-compatible</option>
+                      </select>
+                      <input id="ar-api-key" type="password" autocomplete="off" placeholder="Paste your free API key (saved in this browser only)" />
+                      <input id="ar-model" type="text" autocomplete="off" placeholder="Model (optional, e.g. gemini-2.0-flash)" />
+                      <input id="ar-base" type="url" autocomplete="off" placeholder="Base URL (custom only, e.g. https://api.example.com/v1)" />
+                      <button class="ar-btn" id="ar-save-ai" type="button">Save</button>
+                      <span class="ar-ai-status" id="ar-ai-status"></span>
+                    </div>
+                  </details>
                 </div>
               </article>
 
@@ -404,7 +421,7 @@
       const AR_API_BASE = window.AR_API_BASE || "";
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
-      const GEN_IMG = (p) => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1e9)}`;
+      const GEN_IMG = (p, model = "flux") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&model=${model}&seed=${Math.floor(Math.random() * 1e9)}`;
       const AGENT_SYSTEM = `You are MHZALY's agentic AR engine. The user uploads a photo and may pick what to build.
 Respond ONLY with JSON:
 {"assetType":"3d-model","category":"kurta|shirt|suit|shalwar kameez|dress|saree|curtains|sofa|bag|shoes|other","placement":"body|window|floor|wall|table","style":"photoreal","description":"one clear sentence describing the item, colour and material","targetUnits":"meters"}
@@ -423,6 +440,30 @@ If the user picks Auto, infer the best category and placement from the image hin
       const arAgainBtn = document.getElementById("ar-again-btn");
       const arChips = document.getElementById("ar-chips");
       const arPrompt = document.getElementById("ar-prompt");
+      const arProvider = document.getElementById("ar-provider");
+      const arApiKey = document.getElementById("ar-api-key");
+      const arModel = document.getElementById("ar-model");
+      const arBase = document.getElementById("ar-base");
+      const arSaveAi = document.getElementById("ar-save-ai");
+      const arAiStatus = document.getElementById("ar-ai-status");
+      const AI_KEY = "mhzaly_ai_cfg";
+
+      function getCfg() {
+        try { return JSON.parse(localStorage.getItem(AI_KEY) || "{}"); } catch { return {}; }
+      }
+      (function loadCfg() {
+        const c = getCfg();
+        if (c.provider) arProvider.value = c.provider;
+        if (c.key) arApiKey.value = c.key;
+        if (c.model) arModel.value = c.model;
+        if (c.base) arBase.value = c.base;
+        if (c.key) arAiStatus.textContent = `using ${c.provider}`;
+      })();
+      arSaveAi.addEventListener("click", () => {
+        const c = { provider: arProvider.value, key: arApiKey.value.trim(), model: arModel.value.trim(), base: arBase.value.trim() };
+        localStorage.setItem(AI_KEY, JSON.stringify(c));
+        arAiStatus.textContent = c.provider === "free" ? "free mode — no key needed" : `saved — ${c.provider}`;
+      });
       const arResultMeta = document.getElementById("ar-result-meta");
       const arDownload = document.getElementById("ar-download");
 
@@ -528,6 +569,64 @@ If the user picks Auto, infer the best category and placement from the image hin
           }
         }
         throw lastErr || new Error("free AI unavailable");
+      }
+
+      function parsePlan(text) {
+        try { return JSON.parse(text); }
+        catch {
+          const m = String(text || "").match(/\{[\s\S]*\}/);
+          if (m) { try { return JSON.parse(m[0]); } catch {} }
+          return { assetType: "3d-model", style: "photoreal", description: String(text || "").slice(0, 240), targetUnits: "meters" };
+        }
+      }
+
+      // Optional: user's own free key (OpenRouter / Groq / Gemini / custom).
+      async function callProvider(promptText) {
+        const c = getCfg();
+        const provider = c.provider || "free";
+        if (provider === "free" || !c.key) return freeAiPlan(promptText);
+
+        if (provider === "gemini") {
+          const model = c.model || "gemini-2.0-flash";
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(c.key)}`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: AGENT_SYSTEM }] },
+              contents: [{ role: "user", parts: [{ text: promptText }] }],
+              generationConfig: { responseMimeType: "application/json", temperature: 0.8 },
+            }),
+          });
+          if (!res.ok) throw new Error("gemini " + res.status);
+          const data = await res.json();
+          return parsePlan(data?.candidates?.[0]?.content?.parts?.[0]?.text || "");
+        }
+
+        const base = provider === "openrouter"
+          ? "https://openrouter.ai/api/v1"
+          : provider === "groq"
+            ? "https://api.groq.com/openai/v1"
+            : (c.base || "").replace(/\/+$/, "");
+        if (!base) throw new Error("base url missing");
+        const model = c.model || (provider === "openrouter"
+          ? "meta-llama/llama-3.1-8b-instruct:free"
+          : provider === "groq" ? "llama-3.1-8b-instant" : "");
+        const res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.key}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: AGENT_SYSTEM },
+              { role: "user", content: promptText },
+            ],
+            temperature: 0.8,
+          }),
+        });
+        if (!res.ok) throw new Error(provider + " " + res.status);
+        const data = await res.json();
+        return parsePlan(data?.choices?.[0]?.message?.content || "");
       }
 
       // Always works: local plan when the free provider is down or rate-limited.
@@ -643,7 +742,7 @@ If the user picks Auto, infer the best category and placement from the image hin
             }
           }
           if (!plan) {
-            try { plan = await freeAiPlan(prompt); }
+            try { plan = await callProvider(prompt); }
             catch { plan = localPlan(); }
           }
           plan = cleanPlan(plan);
@@ -651,17 +750,26 @@ If the user picks Auto, infer the best category and placement from the image hin
           setStep(2);
           await new Promise((r) => setTimeout(r, 600));
           arResultDesc.textContent = "Generating your 3D preview…";
-          const genUrl = GEN_IMG(`${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`);
-          if (arDownload) { arDownload.href = genUrl; arDownload.hidden = false; }
-          arResultImg.src = genUrl;
-          if (window.__init3D) window.__init3D(genUrl);
+          const imagePrompt = `${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`;
           const fallbackPreview = arPreview.src;
-          arResultImg.onload = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
-          arResultImg.onerror = () => {
-            arResultImg.onerror = null;
-            arResultImg.src = fallbackPreview;
-            arResultDesc.textContent = plan.description || "3D AR asset ready.";
+          let imgAttempt = 0;
+          const loadPreview = () => {
+            const genUrl = GEN_IMG(imagePrompt, imgAttempt === 0 ? "flux" : "turbo");
+            arResultImg.onload = () => {
+              arResultDesc.textContent = plan.description || "3D AR asset ready.";
+              arDownload.href = genUrl;
+              arDownload.hidden = false;
+              if (window.__init3D) window.__init3D(genUrl);
+            };
+            arResultImg.onerror = () => {
+              if (imgAttempt < 1) { imgAttempt += 1; loadPreview(); return; }
+              arResultImg.onerror = null;
+              arResultImg.src = fallbackPreview;
+              arResultDesc.textContent = (plan.description || "3D AR asset ready.") + " (preview limited — try again)";
+            };
+            arResultImg.src = genUrl;
           };
+          loadPreview();
           const metaBits = [
             plan.category || (selectedOption !== "Auto" ? selectedOption : ""),
             plan.placement ? `on ${plan.placement}` : "",
