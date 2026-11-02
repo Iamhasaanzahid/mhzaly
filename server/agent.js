@@ -30,9 +30,24 @@ export async function runAgent({ type, prompt, image } = {}) {
   const job = { jobId, type: type || "3d-model", prompt: prompt || "", image: image || null, status: "queued", createdAt: Date.now() };
   jobs.set(jobId, job);
 
+  // Free / demo mode: no key configured — still return a usable plan so the
+  // upload → plan → AR flow works end-to-end. Set AI_API_KEY to go live.
   if (!AI_API_KEY) {
-    job.status = "failed";
-    job.error = "AI_API_KEY not configured";
+    const words = (prompt || "").trim().split(/\s+/).filter(Boolean).slice(0, 6).join(" ");
+    job.status = "planned";
+    job.mode = "demo";
+    job.plan = {
+      assetType: type || "3d-model",
+      style: "photoreal",
+      description: words ? `3D AR asset — ${words}` : image ? "3D AR asset generated from your image" : "3D AR asset",
+      targetUnits: "meters",
+    };
+    job.output = {
+      assetType: job.plan.assetType,
+      style: job.plan.style,
+      description: job.plan.description,
+      imageReceived: Boolean(image),
+    };
     return job;
   }
 

@@ -376,12 +376,14 @@
             body: JSON.stringify({ type: "3d-model", prompt: "MHZALY 3D AR asset", image }),
           });
           const job = await res.json();
-          arJobStatus.innerHTML = `Job status: <b>${job.status}</b>` + (job.error ? ` — ${job.error}` : "");
+          const planText = job.plan && job.plan.description ? `<br><span>${job.plan.description}</span>` : "";
+          arJobStatus.innerHTML = `Job status: <b>${job.status}</b>` + (job.error ? ` — ${job.error}` : "") + planText;
           const poll = async () => {
             const r2 = await fetch(api(`/api/generate/${job.jobId}`));
             const j2 = await r2.json();
-            arJobStatus.innerHTML = `Job status: <b>${j2.status}</b>` + (j2.error ? ` — ${j2.error}` : "");
-            if (j2.status === "queued" || j2.status === "planned" || j2.status === "processing") setTimeout(poll, 2000);
+            const p2 = j2.plan && j2.plan.description ? `<br><span>${j2.plan.description}</span>` : "";
+            arJobStatus.innerHTML = `Job status: <b>${j2.status}</b>` + (j2.error ? ` — ${j2.error}` : "") + p2;
+            if (j2.status === "queued" || j2.status === "processing") setTimeout(poll, 2000);
           };
           poll();
         } catch (e) {
