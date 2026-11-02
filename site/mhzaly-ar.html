@@ -121,7 +121,21 @@
                 </label>
                 <div class="body">
                   <h3>Image to 3D AR</h3>
-                  <p>Upload a fabric or product photo — the agentic AI turns it into a 3D AR model.</p>
+                  <p>Upload any photo — a model wearing an outfit, curtains by a window, furniture — and tell the AI what to build.</p>
+                  <div class="ar-chips" id="ar-chips" role="group" aria-label="What should the AI build?">
+                    <button type="button" class="ar-chip is-on" data-opt="Auto">✨ Auto (AI decides)</button>
+                    <button type="button" class="ar-chip" data-opt="Kurta">Kurta</button>
+                    <button type="button" class="ar-chip" data-opt="Shirt">Shirt</button>
+                    <button type="button" class="ar-chip" data-opt="Suit">Suit</button>
+                    <button type="button" class="ar-chip" data-opt="Shalwar Kameez">Shalwar Kameez</button>
+                    <button type="button" class="ar-chip" data-opt="Dress">Dress</button>
+                    <button type="button" class="ar-chip" data-opt="Saree">Saree</button>
+                    <button type="button" class="ar-chip" data-opt="Curtains">Curtains</button>
+                    <button type="button" class="ar-chip" data-opt="Sofa">Sofa</button>
+                    <button type="button" class="ar-chip" data-opt="Bag">Bag</button>
+                    <button type="button" class="ar-chip" data-opt="Shoes">Shoes</button>
+                  </div>
+                  <textarea id="ar-prompt" class="ar-prompt" rows="2" placeholder="Optional details — colour, fabric, room… e.g. “cream kurta, place on body”"></textarea>
                   <div class="foot">
                     <button class="ar-btn" id="ar-generate-btn" disabled>Generate with AI</button>
                     <span class="ar-file-name" id="ar-file-name">No image selected</span>
@@ -137,6 +151,7 @@
                 <div class="body">
                   <h3 id="ar-result-title">Your 3D AR asset</h3>
                   <p id="ar-result-desc">The agent is reading your image…</p>
+                  <div class="ar-result-meta" id="ar-result-meta" hidden></div>
                   <div class="ar-steps" id="ar-steps">
                     <span>Analyzing image</span>
                     <span>Planning</span>
@@ -145,6 +160,7 @@
                   </div>
                   <div class="foot">
                     <a class="ar-btn" href="index.html#fabric-ai">Open in 3D Studio</a>
+                    <a class="ar-btn ar-btn-ghost" id="ar-download" href="#" download="mhzaly-ar-asset.jpg" hidden>⬇ Save image</a>
                     <button class="ar-btn ar-btn-ghost" id="ar-again-btn" type="button">Generate another</button>
                   </div>
                 </div>
@@ -379,7 +395,11 @@
       const AR_API_BASE = window.AR_API_BASE || "";
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
-      const AGENT_SYSTEM = `You are MHZALY's agentic AR engine. Turn user intent into a 3D AR asset job. Respond ONLY with JSON: {"assetType":"3d-model","style":"photoreal","description":"short creative brief","targetUnits":"meters"}`;
+      const GEN_IMG = (p) => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1e9)}`;
+      const AGENT_SYSTEM = `You are MHZALY's agentic AR engine. The user uploads a photo and may pick what to build.
+Respond ONLY with JSON:
+{"assetType":"3d-model","category":"kurta|shirt|suit|shalwar kameez|dress|saree|curtains|sofa|bag|shoes|other","placement":"body|window|floor|wall|table","style":"photoreal","description":"one clear sentence describing the item, colour and material","targetUnits":"meters"}
+If the user picks Auto, infer the best category and placement from the image hint.`;
 
       const arGenerateBtn = document.getElementById("ar-generate-btn");
       const arImgInput = document.getElementById("ar-img-input");
@@ -392,7 +412,12 @@
       const arResultDesc = document.getElementById("ar-result-desc");
       const arSteps = document.getElementById("ar-steps");
       const arAgainBtn = document.getElementById("ar-again-btn");
+      const arChips = document.getElementById("ar-chips");
+      const arPrompt = document.getElementById("ar-prompt");
+      const arResultMeta = document.getElementById("ar-result-meta");
+      const arDownload = document.getElementById("ar-download");
 
+      let selectedOption = "Auto";
       let selectedFile = null;
 
       function showStatus(status, extra, plan) {
@@ -422,6 +447,17 @@
 
       arImgInput.addEventListener("change", () => pickFile(arImgInput.files && arImgInput.files[0]));
 
+      arChips.addEventListener("click", (e) => {
+        const chip = e.target.closest(".ar-chip");
+        if (!chip) return;
+        [...arChips.children].forEach((c) => c.classList.remove("is-on"));
+        chip.classList.add("is-on");
+        selectedOption = chip.dataset.opt || "Auto";
+        if (selectedFile) {
+          showStatus("image ready", `will build: ${selectedOption === "Auto" ? "AI decides" : selectedOption}`);
+        }
+      });
+
       ["dragenter", "dragover"].forEach((ev) => arDrop.addEventListener(ev, (e) => {
         e.preventDefault();
         arDrop.classList.add("is-drag");
@@ -443,6 +479,8 @@
         arFileName.textContent = "No image selected";
         arGenerateBtn.disabled = true;
         arResult.hidden = true;
+        arResultMeta.hidden = true;
+        arDownload.hidden = true;
         showStatus("—");
       });
 
@@ -503,7 +541,11 @@
 
         try {
           const hint = (selectedFile.name || "").replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
-          const prompt = `Create a photoreal 3D AR asset from this image${hint ? ` (${hint})` : ""}. Describe the garment or object, its colour, material and silhouette in one sentence.`;
+          const target = selectedOption && selectedOption !== "Auto"
+            ? `Build a ${selectedOption.toLowerCase()} from this image`
+            : "AI decides what to build from this image";
+          const extra = arPrompt.value.trim();
+          const prompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
           setStep(1);
 
           let plan;
@@ -527,7 +569,19 @@
 
           setStep(2);
           await new Promise((r) => setTimeout(r, 600));
-          arResultDesc.textContent = plan.description || "3D AR asset ready.";
+          arResultDesc.textContent = "Generating your 3D preview…";
+          const genUrl = GEN_IMG(`${plan.description || prompt} — photoreal 3d ar asset, studio lighting`);
+          if (arDownload) { arDownload.href = genUrl; arDownload.hidden = false; }
+          arResultImg.src = genUrl;
+          arResultImg.onload = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
+          arResultImg.onerror = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
+          const metaBits = [
+            plan.category || (selectedOption !== "Auto" ? selectedOption : ""),
+            plan.placement ? `on ${plan.placement}` : "",
+            plan.style || "photoreal",
+          ].filter(Boolean);
+          arResultMeta.hidden = metaBits.length === 0;
+          arResultMeta.innerHTML = metaBits.map((x) => `<span>${x}</span>`).join("");
           setStep(4);
           showStatus("ready", plan.style || "", plan);
         } catch (e) {
