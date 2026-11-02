@@ -191,6 +191,7 @@
 .ar-create-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
 .ar-upload-card,.ar-result-card{border:1px solid var(--ar-line);border-radius:20px;background:linear-gradient(180deg,var(--ar-bg-2),var(--ar-panel));overflow:hidden;display:flex;flex-direction:column}
 .ar-result-card{border-color:rgba(232,107,155,.35);box-shadow:0 24px 60px rgba(0,0,0,.35),0 0 50px rgba(139,123,240,.14)}
+.ar-result-card[hidden]{display:none}
 .ar-drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;aspect-ratio:16/9;padding:22px;text-align:center;cursor:pointer;border-bottom:1px solid var(--ar-line);background:
   radial-gradient(60% 80% at 50% 0%, rgba(232,107,155,.12), transparent 70%),
   radial-gradient(50% 70% at 80% 100%, rgba(139,123,240,.14), transparent 70%),
