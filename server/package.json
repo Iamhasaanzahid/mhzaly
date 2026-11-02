@@ -11,5 +11,10 @@
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "env": {
+    "AI_BASE_URL": "https://api.openai.com/v1",
+    "AI_MODEL": "gpt-4o",
+    "AI_API_KEY": ""
   }
 }

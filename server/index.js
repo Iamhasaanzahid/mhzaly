@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import { runAgent, getJob } from "./agent.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -85,13 +86,18 @@ app.get("/api/ar/:id/qr", (req, res) => {
   return res.json({ qrToken: "mhzaly-ar:" + ar.id, id: ar.id });
 });
 
-/* ---------------- AI generation stub ---------------- */
-app.post("/api/generate", (req, res) => {
+/* ---------------- AI generation (agentic) ---------------- */
+app.post("/api/generate", async (req, res) => {
   const { type, prompt, image } = req.body || {};
   if (!prompt && !image) return res.status(400).json({ error: "prompt or image required" });
-  // Real generation calls go through provider keys; kept as pending job slot for v1.
-  const jobId = crypto.randomBytes(8).toString("hex");
-  return res.json({ jobId, status: "queued", type });
+  const job = await runAgent({ type, prompt, image });
+  return res.json(job);
+});
+
+app.get("/api/generate/:jobId", async (req, res) => {
+  const job = await getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: "job not found" });
+  return res.json(job);
 });
 
 /* ---------------- static frontend ---------------- */
