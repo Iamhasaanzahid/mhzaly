@@ -1,6 +1,11 @@
 /* ============================================================
    MHZALY — Create AR clone — styles (scoped under .ar)
    ============================================================ */
+html{color-scheme:dark;scroll-behavior:smooth}
+html,body{margin:0;padding:0;background:#0f0b18}
+body{overflow-x:hidden}
+::selection{background:rgba(167,139,250,.35);color:#fff}
+
 .ar{
   --ar-bg: #0f0b18;
   --ar-bg-2: #150f22;

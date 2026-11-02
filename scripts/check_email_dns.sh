@@ -87,7 +87,7 @@ for sel in zoho zmail google selector1 selector2 default k1 s1 s2 mail dkim; do
   fi
 done
 if [[ "$FOUND_DKIM" -eq 0 ]]; then
-  bad "No DKIM key found on common selectors — check provider's exact selector."
+  warn "No DKIM key on common selectors — check the provider's exact selector."
 fi
 
 # 7. Extra hygiene
