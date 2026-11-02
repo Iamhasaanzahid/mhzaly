@@ -570,7 +570,7 @@ If the user picks Auto, infer the best category and placement from the image hin
           setStep(2);
           await new Promise((r) => setTimeout(r, 600));
           arResultDesc.textContent = "Generating your 3D preview…";
-          const genUrl = GEN_IMG(`${plan.description || prompt} — photoreal 3d ar asset, studio lighting`);
+          const genUrl = GEN_IMG(`${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`);
           if (arDownload) { arDownload.href = genUrl; arDownload.hidden = false; }
           arResultImg.src = genUrl;
           arResultImg.onload = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
