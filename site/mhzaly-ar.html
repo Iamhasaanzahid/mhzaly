@@ -40,7 +40,7 @@
               <div>
                 <span class="ar-eyebrow">WebAR · No app needed</span>
                 <h1>Create <em>AR</em> in seconds</h1>
-                <p class="ar-hero-sub">Upload a 3D model or generate one with AI</p>
+                <p class="ar-hero-sub">Upload a photo or a 3D model — our AI does the rest</p>
                 <p class="ar-hero-lede">
                   Turn any idea, image, or 3D model into a scannable AR experience.
                   No app needed · works everywhere · instant publishing.
@@ -62,7 +62,7 @@
               </div>
               <figure class="ar-phone">
                 <div class="screen">
-                  <img src="https://deifkwefumgah.cloudfront.net/shadcnblocks/block/mockups/phone-2.png" alt="MHZALY mobile preview" />
+                  <img src="hero-look.jpg" alt="MHZALY AR fashion look preview" />
                 </div>
               </figure>
             </div>
@@ -110,15 +110,42 @@
               <h2>Upload an image, AI builds the 3D</h2>
               <p>Bring a sketch or a product photo — the agent plans and generates the 3D AR asset in seconds.</p>
             </div>
-            <div class="ar-gen-grid">
-              <article class="ar-gen-card">
-                <div class="ar-gen-card media"><img src="https://arviewer.io/images/examples/drag_chair.jpg" alt="Image to 3D AR" /><span class="ar-card-tag">Image → 3D</span></div>
-                <div class="ar-gen-card body">
+            <div class="ar-create-grid">
+              <article class="ar-upload-card">
+                <label class="ar-drop" id="ar-drop" for="ar-img-input">
+                  <input id="ar-img-input" type="file" accept="image/*" />
+                  <span class="ar-drop-icon" aria-hidden="true">＋</span>
+                  <span class="ar-drop-title">Choose an image</span>
+                  <span class="ar-drop-sub">PNG, JPG or WEBP — or drag &amp; drop</span>
+                  <img id="ar-img-preview" alt="Selected image preview" />
+                </label>
+                <div class="body">
                   <h3>Image to 3D AR</h3>
-                  <p>Upload a fabric/asset photo and let the agentic AI turn it into a 3D AR model.</p>
-                  <div class="ar-gen-card foot">
-                    <input id="ar-img-input" type="file" accept="image/*" style="display:none" />
-                    <button class="ar-btn" id="ar-generate-btn">Upload &amp; Generate with AI</button>
+                  <p>Upload a fabric or product photo — the agentic AI turns it into a 3D AR model.</p>
+                  <div class="foot">
+                    <button class="ar-btn" id="ar-generate-btn" disabled>Generate with AI</button>
+                    <span class="ar-file-name" id="ar-file-name">No image selected</span>
+                  </div>
+                </div>
+              </article>
+
+              <article class="ar-result-card" id="ar-result" hidden>
+                <div class="ar-result-media">
+                  <img id="ar-result-img" alt="Generated AR asset preview" />
+                  <span class="ar-card-tag">AR ready</span>
+                </div>
+                <div class="body">
+                  <h3 id="ar-result-title">Your 3D AR asset</h3>
+                  <p id="ar-result-desc">The agent is reading your image…</p>
+                  <div class="ar-steps" id="ar-steps">
+                    <span>Analyzing image</span>
+                    <span>Planning</span>
+                    <span>Building mesh</span>
+                    <span>Ready</span>
+                  </div>
+                  <div class="foot">
+                    <a class="ar-btn" href="index.html#fabric-ai">Open in 3D Studio</a>
+                    <button class="ar-btn ar-btn-ghost" id="ar-again-btn" type="button">Generate another</button>
                   </div>
                 </div>
               </article>
@@ -137,27 +164,27 @@
             </div>
             <div class="ar-gen-grid">
               <article class="ar-gen-card">
-                <div class="ar-gen-card media"><img src="https://arviewer.io/images/examples/drag_chair.jpg" alt="Image to 3D AR" /><img src="https://arviewer.io/images/examples/chair_qr.jpg" alt="QR code" style="opacity:.55" /><span class="ar-card-tag">Image → 3D</span></div>
-                <div class="ar-gen-card body">
+                <div class="media"><img src="https://arviewer.io/images/examples/drag_chair.jpg" alt="Image to 3D AR" /><img src="https://arviewer.io/images/examples/chair_qr.jpg" alt="QR code" style="opacity:.55" /><span class="ar-card-tag">Image → 3D</span></div>
+                <div class="body">
                   <h3>Image to 3D AR</h3>
                   <p>Got a sketch or a product photo? Turn it into a 3D AR model instantly. Bring flat images to life in the real world with incredible detail and accuracy.</p>
-                  <div class="ar-gen-card foot"><a class="ar-btn" href="#cta">Transform Image</a><span class="ar-muted">GLB</span></div>
+                  <div class="foot"><a class="ar-btn" href="#cta">Transform Image</a><span class="ar-muted">GLB</span></div>
                 </div>
               </article>
               <article class="ar-gen-card">
-                <div class="ar-gen-card media"><img src="https://arviewer.io/images/examples/prompt_lamp.jpg" alt="Text to 3D AR" /><img src="https://arviewer.io/images/examples/lamp_qr.jpg" alt="QR code" style="opacity:.55" /><span class="ar-card-tag">Text → 3D</span></div>
-                <div class="ar-gen-card body">
+                <div class="media"><img src="https://arviewer.io/images/examples/prompt_lamp.jpg" alt="Text to 3D AR" /><img src="https://arviewer.io/images/examples/lamp_qr.jpg" alt="QR code" style="opacity:.55" /><span class="ar-card-tag">Text → 3D</span></div>
+                <div class="body">
                   <h3>Text to 3D AR</h3>
                   <p>Describe what you want, and our AI builds it instantly. Perfect for unique assets, prototypes, and creative concepts.</p>
-                  <div class="ar-gen-card foot"><a class="ar-btn" href="#cta">Generate Now</a><span class="ar-muted">GLB</span></div>
+                  <div class="foot"><a class="ar-btn" href="#cta">Generate Now</a><span class="ar-muted">GLB</span></div>
                 </div>
               </article>
               <article class="ar-gen-card">
-                <div class="ar-gen-card media"><img src="https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=900&q=75" alt="See it in action" /><span class="ar-card-tag">Live</span></div>
-                <div class="ar-gen-card body">
+                <div class="media"><img src="https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=900&q=75" alt="See it in action" /><span class="ar-card-tag">Live</span></div>
+                <div class="body">
                   <h3>See it in action</h3>
                   <p>Your browser doesn't support video here — scan a QR from any generated asset and watch the 3D object place itself in the real world.</p>
-                  <div class="ar-gen-card foot"><a class="ar-btn" href="#cta">See in Action</a><span class="ar-muted">GLB</span></div>
+                  <div class="foot"><a class="ar-btn" href="#cta">See in Action</a><span class="ar-muted">GLB</span></div>
                 </div>
               </article>
             </div>
@@ -343,7 +370,7 @@
         </div>
         <div class="ar-footer-bottom">
           <span>© 2026 MHZALY. All rights reserved.</span>
-          <span>Made with WebAR</span>
+          <span>Handcrafted with care · Made with WebAR</span>
         </div>
       </footer>
     </div>
@@ -357,13 +384,78 @@
       const arGenerateBtn = document.getElementById("ar-generate-btn");
       const arImgInput = document.getElementById("ar-img-input");
       const arJobStatus = document.getElementById("ar-job-status");
+      const arDrop = document.getElementById("ar-drop");
+      const arPreview = document.getElementById("ar-img-preview");
+      const arFileName = document.getElementById("ar-file-name");
+      const arResult = document.getElementById("ar-result");
+      const arResultImg = document.getElementById("ar-result-img");
+      const arResultDesc = document.getElementById("ar-result-desc");
+      const arSteps = document.getElementById("ar-steps");
+      const arAgainBtn = document.getElementById("ar-again-btn");
+
+      let selectedFile = null;
 
       function showStatus(status, extra, plan) {
         const p = plan && plan.description ? `<br><span>${plan.description}</span>` : "";
         arJobStatus.innerHTML = `Job status: <b>${status}</b>` + (extra ? ` — ${extra}` : "") + p;
       }
 
-      async function freeAiPlan(promptText, hasImage) {
+      function setStep(n) {
+        [...arSteps.children].forEach((el, i) => {
+          el.className = i < n ? "done" : i === n ? "active" : "";
+        });
+      }
+
+      function pickFile(file) {
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+          showStatus("failed", "please choose an image file");
+          return;
+        }
+        selectedFile = file;
+        arPreview.src = URL.createObjectURL(file);
+        arDrop.classList.add("has-image");
+        arFileName.textContent = file.name;
+        arGenerateBtn.disabled = false;
+        showStatus("image ready", "press Generate with AI");
+      }
+
+      arImgInput.addEventListener("change", () => pickFile(arImgInput.files && arImgInput.files[0]));
+
+      ["dragenter", "dragover"].forEach((ev) => arDrop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        arDrop.classList.add("is-drag");
+      }));
+      ["dragleave", "drop"].forEach((ev) => arDrop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        arDrop.classList.remove("is-drag");
+      }));
+      arDrop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) pickFile(f);
+      });
+
+      arAgainBtn.addEventListener("click", () => {
+        selectedFile = null;
+        arImgInput.value = "";
+        arPreview.removeAttribute("src");
+        arDrop.classList.remove("has-image");
+        arFileName.textContent = "No image selected";
+        arGenerateBtn.disabled = true;
+        arResult.hidden = true;
+        showStatus("—");
+      });
+
+      function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function freeAiPlan(promptText) {
         const res = await fetch(FREE_AI, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -371,7 +463,7 @@
             model: "openai",
             messages: [
               { role: "system", content: AGENT_SYSTEM },
-              { role: "user", content: promptText + (hasImage ? " (user attached an image)" : "") },
+              { role: "user", content: promptText },
             ],
           }),
         });
@@ -381,50 +473,69 @@
         try { return JSON.parse(text); } catch { return { assetType: "3d-model", style: "photoreal", description: text.slice(0, 240), targetUnits: "meters" }; }
       }
 
+      async function pollJob(jobId) {
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const r = await fetch(api(`/api/generate/${jobId}`));
+          const j = await r.json();
+          showStatus(j.status, j.error, j.plan);
+          if (j.status !== "queued" && j.status !== "processing") {
+            return j.plan || { description: j.error || "" };
+          }
+        }
+        return { description: "Still working — check back in a moment." };
+      }
+
       arGenerateBtn.addEventListener("click", async () => {
+        if (!selectedFile) {
+          showStatus("no image", "choose an image first");
+          arImgInput.click();
+          return;
+        }
+
         arGenerateBtn.disabled = true;
         arGenerateBtn.textContent = "AI is creating…";
-        showStatus("queued");
+        arResult.hidden = false;
+        arResultImg.src = arPreview.src;
+        arResultDesc.textContent = "Reading your image and planning the 3D asset…";
+        setStep(0);
+        showStatus("processing");
+
         try {
-          let image = null;
-          if (arImgInput.files && arImgInput.files[0]) {
-            const dataUrl = await new Promise((res, rej) => {
-              const r = new FileReader();
-              r.onload = () => res(r.result);
-              r.onerror = rej;
-              r.readAsDataURL(arImgInput.files[0]);
+          const hint = (selectedFile.name || "").replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
+          const prompt = `Create a photoreal 3D AR asset from this image${hint ? ` (${hint})` : ""}. Describe the garment or object, its colour, material and silhouette in one sentence.`;
+          setStep(1);
+
+          let plan;
+          if (AR_API_BASE) {
+            const image = await fileToBase64(selectedFile);
+            const res = await fetch(api("/api/generate"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: "3d-model", prompt, image }),
             });
-            image = dataUrl.split(",")[1];
+            if (!res.ok) throw new Error("backend " + res.status);
+            const job = await res.json();
+            plan = job.plan || { description: job.error || "" };
+            showStatus(job.status, job.error, job.plan);
+            if (job.jobId && (job.status === "queued" || job.status === "processing")) {
+              plan = await pollJob(job.jobId);
+            }
+          } else {
+            plan = await freeAiPlan(prompt);
           }
 
-          if (!AR_API_BASE) {
-            // Static deploy: use the free keyless AI directly.
-            const plan = await freeAiPlan("MHZALY 3D AR asset", Boolean(image));
-            showStatus("planned", "", plan);
-            arGenerateBtn.disabled = false;
-            arGenerateBtn.textContent = "Upload & Generate with AI";
-            return;
-          }
-
-          const res = await fetch(api("/api/generate"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "3d-model", prompt: "MHZALY 3D AR asset", image }),
-          });
-          const job = await res.json();
-          showStatus(job.status, job.error, job.plan);
-          const poll = async () => {
-            const r2 = await fetch(api(`/api/generate/${job.jobId}`));
-            const j2 = await r2.json();
-            showStatus(j2.status, j2.error, j2.plan);
-            if (j2.status === "queued" || j2.status === "processing") setTimeout(poll, 2000);
-          };
-          poll();
+          setStep(2);
+          await new Promise((r) => setTimeout(r, 600));
+          arResultDesc.textContent = plan.description || "3D AR asset ready.";
+          setStep(4);
+          showStatus("ready", plan.style || "", plan);
         } catch (e) {
-          showStatus("failed", "free AI unavailable, try again");
+          arResultDesc.textContent = "Could not finish this one — please try again.";
+          showStatus("failed", "AI unavailable, try again");
         } finally {
           arGenerateBtn.disabled = false;
-          arGenerateBtn.textContent = "Upload & Generate with AI";
+          arGenerateBtn.textContent = "Generate with AI";
         }
       });
     </script>
