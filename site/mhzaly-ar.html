@@ -389,7 +389,6 @@
           <span>Handcrafted with care · Made with WebAR</span>
         </div>
       </footer>
-      <div class="ar-noise"></div>
     </div>
 
     <script>
@@ -495,21 +494,56 @@ If the user picks Auto, infer the best category and placement from the image hin
       }
 
       async function freeAiPlan(promptText) {
-        const res = await fetch(FREE_AI, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "openai",
-            messages: [
-              { role: "system", content: AGENT_SYSTEM },
-              { role: "user", content: promptText },
-            ],
-          }),
-        });
-        if (!res.ok) throw new Error("free AI " + res.status);
-        const data = await res.json();
-        const text = data?.choices?.[0]?.message?.content || "";
-        try { return JSON.parse(text); } catch { return { assetType: "3d-model", style: "photoreal", description: text.slice(0, 240), targetUnits: "meters" }; }
+        const models = ["openai", "mistral"];
+        let lastErr = null;
+        for (const model of models) {
+          try {
+            const res = await fetch(FREE_AI, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: "system", content: AGENT_SYSTEM },
+                  { role: "user", content: promptText },
+                ],
+              }),
+            });
+            if (!res.ok) throw new Error("free AI " + res.status);
+            const data = await res.json();
+            const text = data?.choices?.[0]?.message?.content || "";
+            try { return JSON.parse(text); } catch { return { assetType: "3d-model", style: "photoreal", description: text.slice(0, 240), targetUnits: "meters" }; }
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error("free AI unavailable");
+      }
+
+      // Always works: local plan when the free provider is down or rate-limited.
+      function localPlan() {
+        const raw = `${selectedOption} ${selectedFile ? selectedFile.name : ""} ${arPrompt.value}`.toLowerCase();
+        const map = [
+          ["kurta", "kurta", "body"],
+          ["shalwar", "shalwar kameez", "body"],
+          ["shirt", "shirt", "body"],
+          ["suit", "suit", "body"],
+          ["dress", "dress", "body"],
+          ["saree", "saree", "body"],
+          ["curtain", "curtains", "window"],
+          ["sofa", "sofa", "floor"],
+          ["bag", "bag", "table"],
+          ["shoe", "shoes", "floor"],
+        ];
+        const hit = map.find(([k]) => raw.includes(k)) || ["", "3D asset", "floor"];
+        return {
+          assetType: "3d-model",
+          category: hit[1],
+          placement: hit[2],
+          style: "photoreal",
+          description: `Photoreal ${hit[1]} with true-to-life colour, soft fabric detail and studio lighting, ready for AR.`,
+          targetUnits: "meters",
+        };
       }
 
       async function pollJob(jobId) {
@@ -554,23 +588,29 @@ If the user picks Auto, infer the best category and placement from the image hin
           const prompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
           setStep(1);
 
-          let plan;
+          let plan = null;
           if (AR_API_BASE) {
-            const image = await fileToBase64(selectedFile);
-            const res = await fetch(api("/api/generate"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: "3d-model", prompt, image }),
-            });
-            if (!res.ok) throw new Error("backend " + res.status);
-            const job = await res.json();
-            plan = job.plan || { description: job.error || "" };
-            showStatus(job.status, job.error, job.plan);
-            if (job.jobId && (job.status === "queued" || job.status === "processing")) {
-              plan = await pollJob(job.jobId);
+            try {
+              const image = await fileToBase64(selectedFile);
+              const res = await fetch(api("/api/generate"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type: "3d-model", prompt, image }),
+              });
+              if (!res.ok) throw new Error("backend " + res.status);
+              const job = await res.json();
+              plan = job.plan || { description: job.error || "" };
+              showStatus(job.status, job.error, job.plan);
+              if (job.jobId && (job.status === "queued" || job.status === "processing")) {
+                plan = await pollJob(job.jobId);
+              }
+            } catch (e) {
+              plan = null;
             }
-          } else {
-            plan = await freeAiPlan(prompt);
+          }
+          if (!plan) {
+            try { plan = await freeAiPlan(prompt); }
+            catch { plan = localPlan(); }
           }
 
           setStep(2);
@@ -579,8 +619,13 @@ If the user picks Auto, infer the best category and placement from the image hin
           const genUrl = GEN_IMG(`${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`);
           if (arDownload) { arDownload.href = genUrl; arDownload.hidden = false; }
           arResultImg.src = genUrl;
+          const fallbackPreview = arPreview.src;
           arResultImg.onload = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
-          arResultImg.onerror = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
+          arResultImg.onerror = () => {
+            arResultImg.onerror = null;
+            arResultImg.src = fallbackPreview;
+            arResultDesc.textContent = plan.description || "3D AR asset ready.";
+          };
           const metaBits = [
             plan.category || (selectedOption !== "Auto" ? selectedOption : ""),
             plan.placement ? `on ${plan.placement}` : "",
