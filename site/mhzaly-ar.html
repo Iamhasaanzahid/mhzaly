@@ -102,6 +102,31 @@
           </div>
         </section>
 
+        <!-- ================= AGENTIC CREATE ================= -->
+        <section class="ar-section" id="create">
+          <div class="ar-wrap">
+            <div class="ar-section-head">
+              <span class="ar-eyebrow">Agentic AI</span>
+              <h2>Upload an image, AI builds the 3D</h2>
+              <p>Bring a sketch or a product photo — the agent plans and generates the 3D AR asset in seconds.</p>
+            </div>
+            <div class="ar-gen-grid">
+              <article class="ar-gen-card">
+                <div class="ar-gen-card media"><img src="https://arviewer.io/images/examples/drag_chair.jpg" alt="Image to 3D AR" /><span class="ar-card-tag">Image → 3D</span></div>
+                <div class="ar-gen-card body">
+                  <h3>Image to 3D AR</h3>
+                  <p>Upload a fabric/asset photo and let the agentic AI turn it into a 3D AR model.</p>
+                  <div class="ar-gen-card foot">
+                    <input id="ar-img-input" type="file" accept="image/*" style="display:none" />
+                    <button class="ar-btn" id="ar-generate-btn">Upload &amp; Generate with AI</button>
+                  </div>
+                </div>
+              </article>
+            </div>
+            <p class="ar-job-status" id="ar-job-status">Job status: —</p>
+          </div>
+        </section>
+
         <!-- ================= GENERATE WITH AI ================= -->
         <section class="ar-section" id="generate">
           <div class="ar-wrap">
@@ -322,5 +347,45 @@
         </div>
       </footer>
     </div>
+
+    <script>
+      const arGenerateBtn = document.getElementById("ar-generate-btn");
+      const arImgInput = document.getElementById("ar-img-input");
+      const arJobStatus = document.getElementById("ar-job-status");
+
+      arGenerateBtn.addEventListener("click", async () => {
+        arGenerateBtn.disabled = true;
+        arGenerateBtn.textContent = "AI is creating…";
+        arJobStatus.innerHTML = "Job status: <b>queued</b> …";
+        try {
+          let image = null;
+          if (arImgInput.files && arImgInput.files[0]) {
+            const dataUrl = await new Promise((res, rej) => {
+              const r = new FileReader();
+              r.onload = () => res(r.result);
+              r.onerror = rej;
+              r.readAsDataURL(arImgInput.files[0]);
+            });
+            image = dataUrl.split(",")[1];
+          }
+          const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "3d-model", prompt: "MHZALY 3D AR asset", image }),
+          });
+          const job = await res.json();
+          arJobStatus.innerHTML = `Job status: <b>${job.status}</b>` + (job.error ? ` — ${job.error}` : "");
+          const poll = async () => {
+            const r2 = await fetch(`/api/generate/${job.jobId}`);
+            const j2 = await r2.json();
+            arJobStatus.innerHTML = `Job status: <b>${j2.status}</b>` + (j2.error ? ` — ${j2.error}` : "");
+            if (j2.status === "queued" || j2.status === "planned" || j2.status === "processing") setTimeout(poll, 2000);
+          };
+          poll();
+        } catch (e) {
+          arJobStatus.textContent = "Job status: failed — backend not reachable";
+        }
+      });
+    </script>
   </body>
 </html>

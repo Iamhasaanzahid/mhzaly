@@ -152,6 +152,9 @@
 .ar-footer li a:hover{color:var(--ar-ink)}
 .ar-footer-bottom{border-top:1px solid var(--ar-line);max-width:var(--ar-max);margin:30px auto 0;padding:18px 24px 0;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;color:var(--ar-muted);font-size:.72rem}
 
+.ar-job-status{margin:16px 0 0;color:var(--ar-muted);font-size:.78rem;min-height:1.4em}
+.ar-job-status b{color:var(--ar-ink)}
+
 /* ---------------- Responsive ---------------- */
 @media(max-width:1020px){
   .ar-hero-in{grid-template-columns:1fr}
