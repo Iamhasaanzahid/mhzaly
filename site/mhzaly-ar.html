@@ -544,16 +544,39 @@ If the user picks Auto, infer the best category and placement from the image hin
         });
       }
 
+      // Fetch image with retry/backoff (Pollinations rate-limits with 402 + retry-after).
+      async function generateImage(promptText) {
+        const models = ["flux", "flux", "turbo"];
+        for (let i = 0; i < models.length; i++) {
+          const url = GEN_IMG(promptText, models[i]);
+          try {
+            const res = await fetch(url, { mode: "cors", cache: "no-store" });
+            const type = res.headers.get("content-type") || "";
+            if (res.ok && type.startsWith("image/")) {
+              const blob = await res.blob();
+              return { url: URL.createObjectURL(blob), blob };
+            }
+            const ra = Number(res.headers.get("retry-after") || 0);
+            const wait = Math.min(ra ? ra * 1000 : 4000, 12000);
+            showStatus("retrying image", `${models[i]} busy — ${Math.round(wait / 1000)}s`);
+            await new Promise((r) => setTimeout(r, wait));
+          } catch (e) {
+            await new Promise((r) => setTimeout(r, 2500));
+          }
+        }
+        return null;
+      }
+
       async function freeAiPlan(promptText) {
-        const models = ["openai", "mistral"];
+        const models = ["openai", "mistral", "openai"];
         let lastErr = null;
-        for (const model of models) {
+        for (let i = 0; i < models.length; i++) {
           try {
             const res = await fetch(FREE_AI, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                model,
+                model: models[i],
                 messages: [
                   { role: "system", content: AGENT_SYSTEM },
                   { role: "user", content: promptText },
@@ -563,9 +586,10 @@ If the user picks Auto, infer the best category and placement from the image hin
             if (!res.ok) throw new Error("free AI " + res.status);
             const data = await res.json();
             const text = data?.choices?.[0]?.message?.content || "";
-            try { return JSON.parse(text); } catch { return { assetType: "3d-model", style: "photoreal", description: text.slice(0, 240), targetUnits: "meters" }; }
+            return parsePlan(text);
           } catch (e) {
             lastErr = e;
+            if (i < models.length - 1) await new Promise((r) => setTimeout(r, 1500));
           }
         }
         throw lastErr || new Error("free AI unavailable");
@@ -751,25 +775,18 @@ If the user picks Auto, infer the best category and placement from the image hin
           await new Promise((r) => setTimeout(r, 600));
           arResultDesc.textContent = "Generating your 3D preview…";
           const imagePrompt = `${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`;
-          const fallbackPreview = arPreview.src;
-          let imgAttempt = 0;
-          const loadPreview = () => {
-            const genUrl = GEN_IMG(imagePrompt, imgAttempt === 0 ? "flux" : "turbo");
-            arResultImg.onload = () => {
-              arResultDesc.textContent = plan.description || "3D AR asset ready.";
-              arDownload.href = genUrl;
-              arDownload.hidden = false;
-              if (window.__init3D) window.__init3D(genUrl);
-            };
-            arResultImg.onerror = () => {
-              if (imgAttempt < 1) { imgAttempt += 1; loadPreview(); return; }
-              arResultImg.onerror = null;
-              arResultImg.src = fallbackPreview;
-              arResultDesc.textContent = (plan.description || "3D AR asset ready.") + " (preview limited — try again)";
-            };
-            arResultImg.src = genUrl;
-          };
-          loadPreview();
+          arResultDesc.textContent = "Generating your 3D preview…";
+          const gen = await generateImage(imagePrompt);
+          if (gen) {
+            arResultImg.src = gen.url;
+            arResultDesc.textContent = plan.description || "3D AR asset ready.";
+            arDownload.href = gen.url;
+            arDownload.hidden = false;
+            if (window.__init3D) window.__init3D(gen.url);
+          } else {
+            arResultImg.src = arPreview.src;
+            arResultDesc.textContent = (plan.description || "3D AR asset ready.") + " (preview limited — try again in a minute)";
+          }
           const metaBits = [
             plan.category || (selectedOption !== "Auto" ? selectedOption : ""),
             plan.placement ? `on ${plan.placement}` : "",
