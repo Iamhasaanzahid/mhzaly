@@ -389,6 +389,7 @@
           <span>Handcrafted with care · Made with WebAR</span>
         </div>
       </footer>
+      <div class="ar-noise"></div>
     </div>
 
     <script>
@@ -523,6 +524,11 @@ If the user picks Auto, infer the best category and placement from the image hin
         }
         return { description: "Still working — check back in a moment." };
       }
+
+      const io = new IntersectionObserver((es) => es.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      }), { threshold: 0.1 });
+      document.querySelectorAll(".ar-section").forEach((s) => io.observe(s));
 
       arGenerateBtn.addEventListener("click", async () => {
         if (!selectedFile) {

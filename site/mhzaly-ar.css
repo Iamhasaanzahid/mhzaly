@@ -129,6 +129,8 @@
 
 /* how it works */
 .ar-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;counter-reset:step}
+.ar-section{opacity:0;transform:translateY(22px);transition:opacity .85s ease,transform .85s cubic-bezier(.2,.7,.2,1)}
+.ar-section.in{opacity:1;transform:none}
 .ar-step{position:relative;padding:22px;border:1px solid var(--ar-line);border-radius:16px;background:var(--ar-panel);transition:transform .22s ease,border-color .22s ease}
 .ar-step:hover{transform:translateY(-3px);border-color:rgba(232,107,155,.45)}
 .ar-step .step-no{counter-increment:step;font-family:var(--ar-serif);font-size:2.4rem;font-weight:600;line-height:1;background:var(--ar-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;opacity:.85}
@@ -227,6 +229,8 @@
 .ar-steps span.done{border-color:rgba(245,169,75,.5);color:var(--ar-ink);background:rgba(245,169,75,.12)}
 .ar-steps span.active{border-color:transparent;background:var(--ar-grad);color:#1d1024;animation:arPulse 1.2s ease-in-out infinite}
 @keyframes arPulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+.ar-noise{position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");background-size:160px 160px}
 
 /* ---------------- Responsive ---------------- */
 @media(max-width:1020px){
