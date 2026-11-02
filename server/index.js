@@ -101,7 +101,11 @@ app.get("/api/generate/:jobId", async (req, res) => {
 });
 
 /* ---------------- static frontend ---------------- */
-const siteDir = path.resolve(__dirname, "..", "site");
+const siteCandidates = [
+  path.resolve(__dirname, "..", "site"), // local: repo/site
+  path.resolve(__dirname, "site"),       // docker: /app/site
+];
+const siteDir = siteCandidates.find((p) => fs.existsSync(p)) || siteCandidates[0];
 app.use(express.static(siteDir));
 app.get(/^\/(?!api\/).*/, (req, res) => {
   res.sendFile(path.join(siteDir, "index.html"));

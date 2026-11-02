@@ -14,8 +14,8 @@
   --ar-accent-3: #7c6cf0;
   --ar-accent-ink: #120a24;
   --ar-grad: linear-gradient(100deg,#7c6cf0 0%,#a78bfa 55%,#c4b5fd 100%);
-  --ar-serif: "Fraunces", Georgia, serif;
-  --ar-sans: "DM Sans", system-ui, sans-serif;
+  --ar-serif: "Sora", "Inter", system-ui, sans-serif;
+  --ar-sans: "Inter", system-ui, sans-serif;
   --ar-max: 1240px;
   color: var(--ar-ink);
   background: var(--ar-bg);
@@ -56,7 +56,7 @@
 .ar-hero-in{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(30px,5vw,60px);align-items:center}
 .ar-eyebrow{display:inline-block;color:var(--ar-accent);font-size:.68rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;background:var(--ar-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .ar-hero h1{margin:16px 0 18px;font-size:clamp(2.6rem,5.6vw,4.4rem);font-weight:600}
-.ar-hero h1 em{font-style:italic;background:var(--ar-grad);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:arShimmer 7s linear infinite}
+.ar-hero h1 em{font-style:normal;background:var(--ar-grad);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:arShimmer 7s linear infinite}
 @keyframes arShimmer{0%{background-position:0% 50%}100%{background-position:220% 50%}}
 @media (prefers-reduced-motion: reduce){.ar-hero h1 em{animation:none}}
 .ar-hero-sub{margin:0 0 18px;font-family:var(--ar-serif);font-size:clamp(1.2rem,2vw,1.55rem);color:var(--ar-soft)}
@@ -219,6 +219,9 @@
 .ar-file-name{color:var(--ar-muted);font-size:.74rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ar-result-media{position:relative;aspect-ratio:16/9;overflow:hidden;background:#0b0814}
 .ar-result-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ar-result-media img.is-hidden{opacity:0}
+.ar-result-media canvas{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .5s ease;cursor:grab;touch-action:none}
+.ar-result-media canvas.is-on{opacity:1}
 .ar-steps{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
 .ar-steps span{padding:4px 10px;border-radius:999px;border:1px solid var(--ar-line);font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ar-muted)}
 .ar-steps span.done{border-color:rgba(245,169,75,.5);color:var(--ar-ink);background:rgba(245,169,75,.12)}

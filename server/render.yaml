@@ -3,7 +3,7 @@ services:
     name: mhzaly-ar
     runtime: node
     plan: free
-    buildCommand: cd server && npm install && cd .. && ls
+    buildCommand: cd server && npm install
     startCommand: node server/index.js
     envVars:
       - key: PORT

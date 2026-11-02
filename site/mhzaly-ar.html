@@ -8,8 +8,16 @@
     <meta name="theme-color" content="#14110d" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="mhzaly-ar.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
   </head>
   <body>
     <div class="ar">
@@ -146,6 +154,7 @@
               <article class="ar-result-card" id="ar-result" hidden>
                 <div class="ar-result-media">
                   <img id="ar-result-img" alt="Generated AR asset preview" />
+                  <canvas id="ar-3d-canvas"></canvas>
                   <span class="ar-card-tag">AR ready</span>
                 </div>
                 <div class="body">
@@ -161,6 +170,7 @@
                   <div class="foot">
                     <a class="ar-btn" href="index.html#fabric-ai">Open in 3D Studio</a>
                     <a class="ar-btn ar-btn-ghost" id="ar-download" href="#" download="mhzaly-ar-asset.jpg" hidden>⬇ Save image</a>
+                    <button class="ar-btn ar-btn-ghost" id="ar-glb" type="button" hidden>⬇ Download 3D (GLB)</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-again-btn" type="button">Generate another</button>
                   </div>
                 </div>
@@ -386,7 +396,6 @@
         </div>
         <div class="ar-footer-bottom">
           <span>© 2026 MHZALY. All rights reserved.</span>
-          <span>Handcrafted with care · Made with WebAR</span>
         </div>
       </footer>
     </div>
@@ -481,6 +490,7 @@ If the user picks Auto, infer the best category and placement from the image hin
         arResult.hidden = true;
         arResultMeta.hidden = true;
         arDownload.hidden = true;
+        arGlb.hidden = true;
         showStatus("—");
       });
 
@@ -576,6 +586,18 @@ If the user picks Auto, infer the best category and placement from the image hin
       }), { threshold: 0.1 });
       document.querySelectorAll(".ar-section").forEach((s) => io.observe(s));
 
+      const arGlb = document.getElementById("ar-glb");
+
+      arGlb.addEventListener("click", async () => {
+        try {
+          if (!window.__exportGLB) throw new Error("3D not ready");
+          await window.__exportGLB();
+          showStatus("exported", "GLB downloaded");
+        } catch (e) {
+          showStatus("failed", "3D export not available on this device");
+        }
+      });
+
       arGenerateBtn.addEventListener("click", async () => {
         if (!selectedFile) {
           showStatus("no image", "choose an image first");
@@ -632,6 +654,7 @@ If the user picks Auto, infer the best category and placement from the image hin
           const genUrl = GEN_IMG(`${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`);
           if (arDownload) { arDownload.href = genUrl; arDownload.hidden = false; }
           arResultImg.src = genUrl;
+          if (window.__init3D) window.__init3D(genUrl);
           const fallbackPreview = arPreview.src;
           arResultImg.onload = () => { arResultDesc.textContent = plan.description || "3D AR asset ready."; };
           arResultImg.onerror = () => {
@@ -656,6 +679,104 @@ If the user picks Auto, infer the best category and placement from the image hin
           arGenerateBtn.textContent = "Generate with AI";
         }
       });
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+
+      const canvas = document.getElementById("ar-3d-canvas");
+      const imgEl = document.getElementById("ar-result-img");
+      const glbBtn = document.getElementById("ar-glb");
+      let renderer, scene, camera, card, clock, dragX = null;
+
+      function resize() {
+        if (!renderer) return;
+        const w = canvas.clientWidth || 600;
+        const h = canvas.clientHeight || 340;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+
+      function boot() {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.1, 100);
+        camera.position.set(0, 0, 4.6);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+        const key = new THREE.DirectionalLight(0xffffff, 1.7);
+        key.position.set(2.5, 3, 4);
+        scene.add(key);
+        const rim = new THREE.DirectionalLight(0xa78bfa, 1.1);
+        rim.position.set(-3, -1.5, 2);
+        scene.add(rim);
+
+        const geo = new THREE.PlaneGeometry(2.5, 3.3, 40, 40);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x2a2240, roughness: 0.55, metalness: 0.08, side: THREE.DoubleSide });
+        card = new THREE.Mesh(geo, mat);
+        scene.add(card);
+
+        clock = new THREE.Clock();
+        const loop = () => {
+          requestAnimationFrame(loop);
+          const t = clock.getElapsedTime();
+          if (dragX === null) {
+            card.rotation.y = Math.sin(t * 0.55) * 0.35;
+            card.rotation.x = Math.sin(t * 0.4) * 0.07;
+          }
+          card.position.y = Math.sin(t * 0.8) * 0.05;
+          renderer.render(scene, camera);
+        };
+        loop();
+        resize();
+        window.addEventListener("resize", resize);
+
+        canvas.addEventListener("pointerdown", (e) => { dragX = e.clientX; canvas.setPointerCapture(e.pointerId); });
+        canvas.addEventListener("pointerup", () => { dragX = null; });
+        canvas.addEventListener("pointercancel", () => { dragX = null; });
+        canvas.addEventListener("pointermove", (e) => {
+          if (dragX === null) return;
+          card.rotation.y += (e.clientX - dragX) * 0.01;
+          dragX = e.clientX;
+        });
+      }
+
+      window.__init3D = (src) => {
+        try {
+          if (!renderer) boot();
+          const loader = new THREE.TextureLoader();
+          loader.setCrossOrigin("anonymous");
+          loader.load(src, (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            card.material.map = tex;
+            card.material.color.set(0xffffff);
+            card.material.needsUpdate = true;
+            canvas.classList.add("is-on");
+            imgEl.classList.add("is-hidden");
+            glbBtn.hidden = false;
+          }, undefined, () => {});
+        } catch (e) {
+          // No WebGL — keep the 2D image visible.
+        }
+      };
+
+      window.__exportGLB = async () => {
+        if (!card) throw new Error("3D not ready");
+        const exporter = new GLTFExporter();
+        const glb = await exporter.parseAsync(card, { binary: true });
+        const blob = new Blob([glb], { type: "model/gltf-binary" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "mhzaly-ar-asset.glb";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      };
     </script>
   </body>
 </html>
