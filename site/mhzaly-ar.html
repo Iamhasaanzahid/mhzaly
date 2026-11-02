@@ -349,6 +349,8 @@
     </div>
 
     <script>
+      const AR_API_BASE = window.AR_API_BASE || "";
+      const api = (p) => `${AR_API_BASE}${p}`;
       const arGenerateBtn = document.getElementById("ar-generate-btn");
       const arImgInput = document.getElementById("ar-img-input");
       const arJobStatus = document.getElementById("ar-job-status");
@@ -368,7 +370,7 @@
             });
             image = dataUrl.split(",")[1];
           }
-          const res = await fetch("/api/generate", {
+          const res = await fetch(api("/api/generate"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ type: "3d-model", prompt: "MHZALY 3D AR asset", image }),
@@ -376,7 +378,7 @@
           const job = await res.json();
           arJobStatus.innerHTML = `Job status: <b>${job.status}</b>` + (job.error ? ` — ${job.error}` : "");
           const poll = async () => {
-            const r2 = await fetch(`/api/generate/${job.jobId}`);
+            const r2 = await fetch(api(`/api/generate/${job.jobId}`));
             const j2 = await r2.json();
             arJobStatus.innerHTML = `Job status: <b>${j2.status}</b>` + (j2.error ? ` — ${j2.error}` : "");
             if (j2.status === "queued" || j2.status === "planned" || j2.status === "processing") setTimeout(poll, 2000);
