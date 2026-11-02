@@ -351,14 +351,40 @@
     <script>
       const AR_API_BASE = window.AR_API_BASE || "";
       const api = (p) => `${AR_API_BASE}${p}`;
+      const FREE_AI = "https://text.pollinations.ai/openai";
+      const AGENT_SYSTEM = `You are MHZALY's agentic AR engine. Turn user intent into a 3D AR asset job. Respond ONLY with JSON: {"assetType":"3d-model","style":"photoreal","description":"short creative brief","targetUnits":"meters"}`;
+
       const arGenerateBtn = document.getElementById("ar-generate-btn");
       const arImgInput = document.getElementById("ar-img-input");
       const arJobStatus = document.getElementById("ar-job-status");
 
+      function showStatus(status, extra, plan) {
+        const p = plan && plan.description ? `<br><span>${plan.description}</span>` : "";
+        arJobStatus.innerHTML = `Job status: <b>${status}</b>` + (extra ? ` — ${extra}` : "") + p;
+      }
+
+      async function freeAiPlan(promptText, hasImage) {
+        const res = await fetch(FREE_AI, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "openai",
+            messages: [
+              { role: "system", content: AGENT_SYSTEM },
+              { role: "user", content: promptText + (hasImage ? " (user attached an image)" : "") },
+            ],
+          }),
+        });
+        if (!res.ok) throw new Error("free AI " + res.status);
+        const data = await res.json();
+        const text = data?.choices?.[0]?.message?.content || "";
+        try { return JSON.parse(text); } catch { return { assetType: "3d-model", style: "photoreal", description: text.slice(0, 240), targetUnits: "meters" }; }
+      }
+
       arGenerateBtn.addEventListener("click", async () => {
         arGenerateBtn.disabled = true;
         arGenerateBtn.textContent = "AI is creating…";
-        arJobStatus.innerHTML = "Job status: <b>queued</b> …";
+        showStatus("queued");
         try {
           let image = null;
           if (arImgInput.files && arImgInput.files[0]) {
@@ -370,24 +396,35 @@
             });
             image = dataUrl.split(",")[1];
           }
+
+          if (!AR_API_BASE) {
+            // Static deploy: use the free keyless AI directly.
+            const plan = await freeAiPlan("MHZALY 3D AR asset", Boolean(image));
+            showStatus("planned", "", plan);
+            arGenerateBtn.disabled = false;
+            arGenerateBtn.textContent = "Upload & Generate with AI";
+            return;
+          }
+
           const res = await fetch(api("/api/generate"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ type: "3d-model", prompt: "MHZALY 3D AR asset", image }),
           });
           const job = await res.json();
-          const planText = job.plan && job.plan.description ? `<br><span>${job.plan.description}</span>` : "";
-          arJobStatus.innerHTML = `Job status: <b>${job.status}</b>` + (job.error ? ` — ${job.error}` : "") + planText;
+          showStatus(job.status, job.error, job.plan);
           const poll = async () => {
             const r2 = await fetch(api(`/api/generate/${job.jobId}`));
             const j2 = await r2.json();
-            const p2 = j2.plan && j2.plan.description ? `<br><span>${j2.plan.description}</span>` : "";
-            arJobStatus.innerHTML = `Job status: <b>${j2.status}</b>` + (j2.error ? ` — ${j2.error}` : "") + p2;
+            showStatus(j2.status, j2.error, j2.plan);
             if (j2.status === "queued" || j2.status === "processing") setTimeout(poll, 2000);
           };
           poll();
         } catch (e) {
-          arJobStatus.textContent = "Job status: failed — backend not reachable";
+          showStatus("failed", "free AI unavailable, try again");
+        } finally {
+          arGenerateBtn.disabled = false;
+          arGenerateBtn.textContent = "Upload & Generate with AI";
         }
       });
     </script>
