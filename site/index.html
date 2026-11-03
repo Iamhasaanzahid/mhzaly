@@ -13,18 +13,16 @@
     <meta property="og:url" content="https://mhzaly-fabric.surge.sh/" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23fbf6ec'/%3E%3Crect x='9' y='9' width='46' height='46' fill='none' stroke='%23211e19' stroke-width='3'/%3E%3Ctext x='32' y='41' font-family='Georgia,serif' font-size='21' fill='%23a94e31' text-anchor='middle'%3ECR%3C/text%3E%3C/svg%3E" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="fonts.css?v=1" />
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+          "three": "./vendor/three.module.js",
+          "three/addons/": "./vendor/addons/"
         }
       }
     </script>
-    <link rel="stylesheet" href="styles.css?v=20261031a" />
+    <link rel="stylesheet" href="styles.css?v=20261102b" />
   </head>
   <body>
     <div class="grain" aria-hidden="true"></div>
@@ -38,12 +36,13 @@
         </span>
       </a>
       <nav class="site-nav" id="site-nav">
+        <a href="mhzaly-ar.html" class="nav-ai">AI AR <span>New</span></a>
         <a href="#studio">Studio</a>
         <a href="#how">How it works</a>
         <a href="#fabrics">Fabrics</a>
         <a href="#faq">FAQ</a>
       </nav>
-      <a class="btn btn-primary site-cta" href="#studio">Open the studio</a>
+      <a class="btn btn-ai site-cta" href="mhzaly-ar.html">Try AI AR</a>
       <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="site-nav">Menu</button>
     </header>
 
@@ -59,6 +58,7 @@
             real-world scene with natural light and shadow.
           </p>
           <div class="hero-actions">
+            <a class="btn btn-ai btn-lg" href="mhzaly-ar.html">Try AI AR <span aria-hidden="true">→</span></a>
             <a class="btn btn-primary btn-lg" href="#studio">Enter the studio</a>
             <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
           </div>
@@ -426,7 +426,10 @@
         <span class="eyebrow">Ready when you are</span>
         <h2>The fitting room is open.</h2>
         <p>Pick a model, drop in a fabric, and see the cut before a single stitch is sewn.</p>
-        <a class="btn btn-primary btn-lg" href="#studio">Enter the studio</a>
+        <div class="closing-actions">
+          <a class="btn btn-primary btn-lg" href="#studio">Enter the studio</a>
+          <a class="btn btn-ai btn-lg" href="mhzaly-ar.html">Try AI AR <span aria-hidden="true">→</span></a>
+        </div>
       </section>
     </main>
 
@@ -443,6 +446,12 @@
           <a href="#studio">Clothing</a>
           <a href="#studio">Scenes</a>
           <a href="#studio">My Looks</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-head">AI Studio</span>
+          <a href="mhzaly-ar.html">AI AR creator</a>
+          <a href="mhzaly-ar.html">Upload &amp; generate</a>
+          <a href="mhzaly-ar.html">3D preview &amp; GLB</a>
         </div>
         <div class="footer-col">
           <span class="footer-head">Learn</span>
@@ -463,7 +472,7 @@
       </div>
     </footer>
 
-    <script type="module" src="app.js?v=20261031a"></script>
+    <script type="module" src="app.js?v=20261102b"></script>
     <script>
       (() => {
         const menuBtn = document.getElementById("menu-btn");

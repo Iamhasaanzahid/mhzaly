@@ -68,31 +68,31 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
   const MODELS = [
     {
       id: "male-athletic", name: "Rohan", tag: "Athletic fit · 3D", gender: "him", garment: "shirt",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&q=75",
+      image: "img/1507003211169.jpg",
     },
     {
       id: "male-tall", name: "Arman", tag: "Kurta · 3D", gender: "him", garment: "kurta",
-      image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&q=75",
+      image: "img/1500648767791.jpg",
     },
     {
       id: "female-1", name: "Zara", tag: "Fitted set · 3D", gender: "her", garment: "set",
-      image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&q=75",
+      image: "img/1494790108377.jpg",
     },
     {
       id: "female-2", name: "Sana", tag: "Saree drape · 3D", gender: "her", garment: "saree",
-      image: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&q=75",
+      image: "img/1524504388940.jpg",
     },
   ];
 
   const SCENES = [
-    { id: "street", name: "City street", mood: "cool", lum: 0.34, note: "dusk light", image: "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=1600&q=80" },
-    { id: "cafe", name: "Modern cafe", mood: "warm", lum: 0.5, note: "amber interior", image: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=1600&q=80" },
-    { id: "park", name: "Outdoor park", mood: "cool", lum: 0.64, note: "green daylight", image: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1600&q=80" },
-    { id: "bazaar", name: "Street bazaar", mood: "warm", lum: 0.48, note: "golden hour", image: "https://images.unsplash.com/photo-1533900298318-6b8da08a523e?w=1600&q=80" },
-    { id: "boutique", name: "Designer boutique", mood: "neutral", lum: 0.55, note: "soft retail light", image: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1600&q=80" },
-    { id: "mall", name: "Luxury mall", mood: "cool", lum: 0.52, note: "polished interior", image: "https://images.unsplash.com/photo-1519567241046-7f570eee3ce6?w=1600&q=80" },
-    { id: "beach", name: "Coastal resort", mood: "cool", lum: 0.8, note: "sunset", image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1600&q=80" },
-    { id: "citydusk", name: "City at dusk", mood: "cool", lum: 0.3, note: "blue hour", image: "https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=1600&q=80" },
+    { id: "street", name: "City street", mood: "cool", lum: 0.34, note: "dusk light", image: "img/1449824913935.jpg" },
+    { id: "cafe", name: "Modern cafe", mood: "warm", lum: 0.5, note: "amber interior", image: "img/1554118811.jpg" },
+    { id: "park", name: "Outdoor park", mood: "cool", lum: 0.64, note: "green daylight", image: "img/1441974231531.jpg" },
+    { id: "bazaar", name: "Street bazaar", mood: "warm", lum: 0.48, note: "golden hour", image: "img/1533900298318.jpg" },
+    { id: "boutique", name: "Designer boutique", mood: "neutral", lum: 0.55, note: "soft retail light", image: "img/1441986300917.jpg" },
+    { id: "mall", name: "Luxury mall", mood: "cool", lum: 0.52, note: "polished interior", image: "img/1519567241046.jpg" },
+    { id: "beach", name: "Coastal resort", mood: "cool", lum: 0.8, note: "sunset", image: "img/1507525428034.jpg" },
+    { id: "citydusk", name: "City at dusk", mood: "cool", lum: 0.3, note: "blue hour", image: "img/1519501025264.jpg" },
   ];
 
   const GARMENTS = {

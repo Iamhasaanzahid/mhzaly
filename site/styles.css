@@ -141,6 +141,11 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .btn-primary{background:var(--ink);color:var(--paper-white);box-shadow:3px 3px 0 rgba(169,78,49,.18)}
 .btn-ghost{border-color:var(--line-strong);color:var(--ink-soft)}
 .btn-ghost:hover{border-color:var(--ink);background:var(--paper-white)}
+.btn-ai{border-color:var(--rust);background:var(--rust);color:#fff8f2;box-shadow:3px 3px 0 rgba(169,78,49,.22)}
+.btn-ai:hover{background:#8f3f26;border-color:#8f3f26;box-shadow:4px 4px 0 rgba(169,78,49,.26)}
+.nav-ai{display:inline-flex;align-items:center;gap:6px;color:var(--rust)!important;font-weight:600}
+.nav-ai span{display:inline-block;padding:1px 5px;border:1px solid currentColor;border-radius:99px;font-size:.5rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;line-height:1.4}
+.closing-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:18px}
 .made-by{color:var(--rust);font-weight:700}
 .empty{margin:0;padding:28px;border:1px dashed var(--line-strong);color:var(--muted);font-size:.82rem;text-align:center}
 
