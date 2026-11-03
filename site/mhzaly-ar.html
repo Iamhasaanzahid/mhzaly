@@ -425,7 +425,7 @@ Respond ONLY with JSON, no markdown:
  "placement":"body|window|floor|wall|table",
  "style":"photoreal",
  "description":"one vivid sentence naming the exact item, its exact colours, fabric and pattern",
- "imagePrompt":"a detailed 90-140 word text-to-image prompt that reproduces EXACTLY what the user asked for. Include: item type, exact colours, fabric texture, embroidery/print, fit, model pose, framing, background, lighting and camera. Never add unrelated items or change the colour.",
+ "imagePrompt":"a detailed 70-100 word text-to-image prompt that reproduces EXACTLY what the user asked for. Include: item type, exact colours, fabric texture, embroidery/print, fit, model pose, framing, background, lighting and camera. Never add unrelated items or change the colour.",
  "targetUnits":"meters"}
 Rules:
 - Obey the user's explicit words (colour, style, fabric) over your own taste.
@@ -767,6 +767,7 @@ Rules:
                   { role: "user", content: promptText },
                 ],
                 temperature: 0.7,
+                max_tokens: 900,
               }),
             });
             if (!res.ok) throw new Error("free AI " + res.status);
