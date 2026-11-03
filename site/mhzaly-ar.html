@@ -968,8 +968,12 @@ Rules:
             }
           }
           if (!plan) {
-            try { plan = await callProvider(prompt); }
-            catch { plan = localPlan(); }
+            try {
+              plan = await Promise.race([
+                callProvider(prompt),
+                new Promise((_, rej) => setTimeout(() => rej(new Error("plan timeout")), 14000)),
+              ]);
+            } catch { plan = localPlan(); }
           }
           plan = cleanPlan(plan);
 
