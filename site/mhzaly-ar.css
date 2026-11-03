@@ -265,3 +265,42 @@ body{overflow-x:hidden}
   .ar-header-in{flex-wrap:wrap;height:auto;padding:14px 24px;gap:14px}
   .ar-inspo-grid,.ar-gen-grid,.ar-suite-grid,.ar-why-grid,.ar-apps-grid,.ar-pricing,.ar-steps{grid-template-columns:1fr}
 }
+
+/* quick AI try-on strip */
+.ar-tryon {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(76, 29, 149, 0.08));
+}
+.ar-tryon-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.ar-tryon-head strong { font-size: 13px; letter-spacing: 0.01em; color: #ede9fe; }
+.ar-tryon-head a { font-size: 12px; color: #c4b5fd; text-decoration: none; font-weight: 600; }
+.ar-tryon-head a:hover { color: #fff; text-decoration: underline; }
+.ar-tryon-row { display: flex; gap: 8px; }
+.ar-tryon-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background: rgba(15, 10, 30, 0.55);
+  color: #f5f3ff;
+  font-size: 13px;
+}
+.ar-tryon-row input::placeholder { color: rgba(196, 181, 253, 0.55); }
+.ar-btn-ghost {
+  background: rgba(167, 139, 250, 0.18);
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  color: #ede9fe;
+  white-space: nowrap;
+}
+.ar-tryon-note { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: rgba(221, 214, 254, 0.75); }

@@ -86,23 +86,23 @@
             </div>
             <div class="ar-inspo-grid">
               <article class="ar-card">
-                <div class="ar-card-media"><img src="https://images.unsplash.com/photo-1531747118685-ca8fa6e08806?w=900&q=75" alt="Animated 3D character" /><span class="ar-card-tag">Face AR</span></div>
+                <div class="ar-card-media"><img src="img/1494790108377.jpg" alt="Animated 3D character" /><span class="ar-card-tag">Face AR</span></div>
                 <div class="ar-card-body"><h3>Animated 3D character</h3><p>Characters that come alive in your world.</p></div>
               </article>
               <article class="ar-card">
-                <div class="ar-card-media"><img src="https://images.unsplash.com/photo-1454167833469-0e3a370ab2d4?w=900&q=75" alt="Business card that comes alive" /><span class="ar-card-tag">World AR</span></div>
+                <div class="ar-card-media"><img src="img/1441986300917.jpg" alt="Business card that comes alive" /><span class="ar-card-tag">World AR</span></div>
                 <div class="ar-card-body"><h3>Business card that comes alive</h3><p>One scan and the story starts.</p></div>
               </article>
               <article class="ar-card">
-                <div class="ar-card-media"><img src="https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=900&q=75" alt="Furniture preview at home" /><span class="ar-card-tag">World AR</span></div>
+                <div class="ar-card-media"><img src="img/1519567241046.jpg" alt="Furniture preview at home" /><span class="ar-card-tag">World AR</span></div>
                 <div class="ar-card-body"><h3>Furniture preview at home</h3><p>See how it looks in their space before buying.</p></div>
               </article>
               <article class="ar-card">
-                <div class="ar-card-media"><img src="https://images.unsplash.com/photo-1552566626-52f8b828add9?w=900&q=75" alt="AR restaurant menu" /><span class="ar-card-tag">Image AR</span></div>
+                <div class="ar-card-media"><img src="img/1533900298318.jpg" alt="AR restaurant menu" /><span class="ar-card-tag">Image AR</span></div>
                 <div class="ar-card-body"><h3>AR restaurant menu</h3><p>Scan a menu, taste the dish in 3D.</p></div>
               </article>
               <article class="ar-card">
-                <div class="ar-card-media"><img src="https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=900&q=75" alt="Retail product showcase" /><span class="ar-card-tag">Model AR</span></div>
+                <div class="ar-card-media"><img src="img/1554118811.jpg" alt="Retail product showcase" /><span class="ar-card-tag">Model AR</span></div>
                 <div class="ar-card-body"><h3>Retail product showcase</h3><p>Products that pop off the shelf.</p></div>
               </article>
             </div>
@@ -146,6 +146,17 @@
                   <div class="foot">
                     <button class="ar-btn" id="ar-generate-btn" disabled>Generate with AI</button>
                     <span class="ar-file-name" id="ar-file-name">No image selected</span>
+                  </div>
+                  <div class="ar-tryon">
+                    <div class="ar-tryon-head">
+                      <strong>AI try-on — same kapda, model pe</strong>
+                      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Free Gemini key →</a>
+                    </div>
+                    <div class="ar-tryon-row">
+                      <input id="ar-quick-key" type="password" autocomplete="off" spellcheck="false" placeholder="Gemini key paste karo (AIza...)" />
+                      <button class="ar-btn ar-btn-ghost" id="ar-quick-save" type="button">Save &amp; try</button>
+                    </div>
+                    <p class="ar-tryon-note" id="ar-tryon-note">Key ke bina bhi chalta hai — aapki photo ka studio render banega.</p>
                   </div>
                   <details class="ar-ai-settings">
                     <summary>AI key pool — unlimited free keys, auto-failover</summary>
@@ -217,7 +228,7 @@
                 </div>
               </article>
               <article class="ar-gen-card">
-                <div class="media"><img src="https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=900&q=75" alt="See it in action" /><span class="ar-card-tag">Live</span></div>
+                <div class="media"><img src="img/1507525428034.jpg" alt="See it in action" /><span class="ar-card-tag">Live</span></div>
                 <div class="body">
                   <h3>See it in action</h3>
                   <p>Your browser doesn't support video here — scan a QR from any generated asset and watch the 3D object place itself in the real world.</p>
@@ -497,10 +508,40 @@ Rules:
       (function loadCfg() {
         const saved = localStorage.getItem(AI_KEY);
         if (saved) arKeys.value = saved;
+        const qk = document.getElementById("ar-quick-key");
+        if (qk) {
+          const g = (localStorage.getItem(AI_KEY) || "").split("\n")
+            .map((l) => l.trim()).find((l) => /^gemini\s*:/i.test(l));
+          if (g) qk.value = g.replace(/^gemini\s*:\s*/i, "");
+        }
         const be = localStorage.getItem("mhzaly_backend");
         if (be && arBackend) arBackend.value = be;
         refreshPoolStatus();
       })();
+      const arQuickKey = document.getElementById("ar-quick-key");
+      const arQuickSave = document.getElementById("ar-quick-save");
+      const arTryonNote = document.getElementById("ar-tryon-note");
+      if (arQuickSave) {
+        arQuickSave.addEventListener("click", () => {
+          const k = (arQuickKey.value || "").trim();
+          if (!k) {
+            arTryonNote.textContent = "Pehle Gemini key paste karo — link upar hai.";
+            return;
+          }
+          const kept = arKeys.value.split("\n").map((l) => l.trim()).filter(Boolean)
+            .filter((l) => !/^gemini\s*:/i.test(l));
+          kept.unshift("gemini: " + k);
+          arKeys.value = kept.join("\n");
+          localStorage.setItem(AI_KEY, arKeys.value);
+          localStorage.removeItem(AI_COOL);
+          refreshPoolStatus();
+          arTryonNote.textContent = "Key saved. Ab photo upload karke Generate dabao — AI try-on chalega.";
+          if (selectedFile && !document.getElementById("ar-generate-btn").disabled) {
+            arTryonNote.textContent = "Key saved — try-on chalu…";
+            document.getElementById("ar-generate-btn").click();
+          }
+        });
+      }
       arSaveAi.addEventListener("click", () => {
         localStorage.setItem(AI_KEY, arKeys.value.trim());
         if (arBackend) localStorage.setItem("mhzaly_backend", arBackend.value.trim());
@@ -638,6 +679,65 @@ Rules:
           }
         }
         throw lastErr || new Error("gemini image failed");
+      }
+
+      function colorName(r, g, b) {
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        const l = (mx + mn) / 510;
+        const s = mx === mn ? 0 : (mx - mn) / (255 - Math.abs((mx + mn) - 255) || 1);
+        let h = 0;
+        if (mx !== mn) {
+          if (mx === r) h = ((g - b) / (mx - mn)) % 6;
+          else if (mx === g) h = (b - r) / (mx - mn) + 2;
+          else h = (r - g) / (mx - mn) + 4;
+          h *= 60; if (h < 0) h += 360;
+        }
+        if (l < 0.12) return "black";
+        if (l > 0.9) return "white";
+        if (s < 0.14) return l < 0.45 ? "charcoal grey" : "light grey";
+        if (h < 15 || h >= 345) return l < 0.4 ? "deep red" : "red";
+        if (h < 45) return l < 0.45 ? "rust orange" : "orange";
+        if (h < 70) return l < 0.4 ? "mustard yellow" : "yellow";
+        if (h < 160) return l < 0.35 ? "forest green" : "green";
+        if (h < 200) return "teal";
+        if (h < 250) return l < 0.35 ? "navy blue" : "blue";
+        if (h < 290) return "purple";
+        return l < 0.4 ? "maroon" : "pink";
+      }
+
+      // Reads the uploaded photo and returns its dominant clothing colours.
+      async function paletteFrom(file) {
+        try {
+          const img = await loadImageFile(file);
+          const c = document.createElement("canvas");
+          c.width = 48; c.height = 48;
+          const ctx = c.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, 48, 48);
+          const d = ctx.getImageData(0, 0, 48, 48).data;
+          const buckets = new Map();
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+            if (a < 200) continue;
+            const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+            const sat = mx === 0 ? 0 : (mx - mn) / mx;
+            if (sat < 0.2 && (mx > 205 || mx < 40)) continue;
+            const k = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+            const e = buckets.get(k) || { r: 0, g: 0, b: 0, n: 0 };
+            e.r += r; e.g += g; e.b += b; e.n++;
+            buckets.set(k, e);
+          }
+          const list = [...buckets.values()]
+            .map((e) => ({ r: e.r / e.n, g: e.g / e.n, b: e.b / e.n, n: e.n }))
+            .sort((x, y) => y.n - x.n);
+          const picked = [];
+          for (const x of list) {
+            if (picked.every((p2) => Math.hypot(p2.r - x.r, p2.g - x.g, p2.b - x.b) > 58)) picked.push(x);
+            if (picked.length === 3) break;
+          }
+          return picked.map((x) => colorName(x.r, x.g, x.b));
+        } catch (e) {
+          return [];
+        }
       }
 
       // ---------------------------------------------------------------------
@@ -1165,7 +1265,11 @@ Rules:
             ? `Build a ${selectedOption.toLowerCase()} from this image`
             : "AI decides what to build from this image";
           const extra = arPrompt.value.trim();
-          const prompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
+          const palette = selectedFile ? await paletteFrom(selectedFile) : [];
+          const colourHint = palette.length
+            ? `The photo's main clothing colours are ${palette.join(", ")} — use these exact colours. `
+            : "";
+          const prompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${colourHint}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
           setStep(1);
 
           let plan = null;
