@@ -170,11 +170,23 @@ export default {
     if (url.pathname === "/api/image") {
       const prompt = String(url.searchParams.get("prompt") || "").slice(0, 1200);
       if (!prompt) return json({ error: "prompt required" }, 400);
+      // Pollinations first: runs from Cloudflare's network, so a local ISP
+      // block or a slow upstream on the visitor's side never matters.
+      const seed = Math.floor(Math.random() * 1e9);
+      const poll = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1536&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
+      try {
+        const r = await fetch(poll);
+        const type = r.headers.get("content-type") || "";
+        if (r.ok && type.startsWith("image/")) {
+          return new Response(r.body, {
+            headers: { ...CORS, "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
+          });
+        }
+      } catch {}
       for (const space of SPACES) {
         try { return await hfImage(space, prompt); } catch {}
       }
-      const fallback = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1536&nologo=true&model=sana&referrer=mhzaly.surge.sh`;
-      return fetch(fallback, { headers: { "Cache-Control": "public, max-age=86400" } });
+      return json({ error: "image unavailable" }, 502);
     }
 
     return json({ error: "not found", routes: ["/health", "/api/generate", "/api/image"] }, 404);
