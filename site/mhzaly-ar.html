@@ -155,6 +155,7 @@
                         <button class="ar-btn" id="ar-save-ai" type="button">Save keys</button>
                         <span class="ar-ai-status" id="ar-ai-status">free mode — no keys needed</span>
                       </div>
+                      <input id="ar-backend" type="url" autocomplete="off" placeholder="Cloud backend URL (optional) — e.g. https://mhzaly-ai.you.workers.dev" />
                       <p class="ar-ai-note">Jitni chahe keys daalo — app khud rotate karega, limit kabhi nahi khategi. Keys sirf aapke browser me save hoti hain.</p>
                     </div>
                   </details>
@@ -411,7 +412,7 @@
     </div>
 
     <script>
-      const AR_API_BASE = window.AR_API_BASE || "";
+      const AR_API_BASE = window.AR_API_BASE || (localStorage.getItem("mhzaly_backend") || "").replace(/\/+$/, "");
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
       const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
@@ -434,6 +435,7 @@ If the user picks Auto, infer the best category and placement from the image hin
       const arChips = document.getElementById("ar-chips");
       const arPrompt = document.getElementById("ar-prompt");
       const arKeys = document.getElementById("ar-keys");
+      const arBackend = document.getElementById("ar-backend");
       const arSaveAi = document.getElementById("ar-save-ai");
       const arAiStatus = document.getElementById("ar-ai-status");
       const AI_KEY = "mhzaly_ai_keys";
@@ -483,12 +485,18 @@ If the user picks Auto, infer the best category and placement from the image hin
       (function loadCfg() {
         const saved = localStorage.getItem(AI_KEY);
         if (saved) arKeys.value = saved;
+        const be = localStorage.getItem("mhzaly_backend");
+        if (be && arBackend) arBackend.value = be;
         refreshPoolStatus();
       })();
       arSaveAi.addEventListener("click", () => {
         localStorage.setItem(AI_KEY, arKeys.value.trim());
+        if (arBackend) localStorage.setItem("mhzaly_backend", arBackend.value.trim());
         localStorage.removeItem(AI_COOL);
         refreshPoolStatus();
+        if (arBackend && arBackend.value.trim()) {
+          arAiStatus.textContent = arAiStatus.textContent + " · backend set (reload)";
+        }
       });
       const arResultMeta = document.getElementById("ar-result-meta");
       const arDownload = document.getElementById("ar-download");
@@ -572,11 +580,11 @@ If the user picks Auto, infer the best category and placement from the image hin
 
       // Free keyless image generators: rotating pool of public Hugging Face Spaces.
       const HF_SPACES = [
-        { id: "flux-schnell", base: "https://black-forest-labs-flux-1-schnell.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 768, 1024, 4] },
-        { id: "flux-merged", base: "https://multimodalart-flux-1-merged.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 768, 1024, 3.5, 4] },
-        { id: "flux-dev", base: "https://black-forest-labs-flux-1-dev.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 768, 1024, 3.5, 4] },
-        { id: "sd35-large", base: "https://stabilityai-stable-diffusion-3-5-large.hf.space", ep: "/infer", args: (p, s) => [p, "", s, true, 768, 1024, 4.5, 24] },
-        { id: "realtime-flux", base: "https://kingnish-realtime-flux.hf.space", ep: "/RealtimeFlux", args: (p, s) => [p, s, 768, 1024, true, 4] },
+        { id: "flux-schnell", base: "https://black-forest-labs-flux-1-schnell.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 4] },
+        { id: "flux-merged", base: "https://multimodalart-flux-1-merged.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 3.5, 4] },
+        { id: "flux-dev", base: "https://black-forest-labs-flux-1-dev.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 3.5, 4] },
+        { id: "sd35-large", base: "https://stabilityai-stable-diffusion-3-5-large.hf.space", ep: "/infer", args: (p, s) => [p, "blurry, low quality, deformed, text, watermark", s, true, 1024, 1536, 4.5, 24] },
+        { id: "realtime-flux", base: "https://kingnish-realtime-flux.hf.space", ep: "/RealtimeFlux", args: (p, s) => [p, s, 1024, 1536, true, 4] },
       ];
 
       async function hfSpaceImage(space, promptText) {
@@ -612,45 +620,69 @@ If the user picks Auto, infer the best category and placement from the image hin
         return { url: URL.createObjectURL(blob), blob };
       }
 
-      // Image generation chain: Pollinations (sana works free) -> flux -> HF FLUX space.
+      const withTimeout = (promise, ms, label) =>
+        Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error((label || "task") + " timeout")), ms)),
+        ]);
+
+      // Image chain: high-quality free FLUX spaces first, then fast Pollinations fallback.
       async function generateImage(promptText) {
-        const models = ["sana", "flux", "sana"];
         const started = Date.now();
-        let timer = setInterval(() => {
-          const s = Math.round((Date.now() - started) / 1000);
-          showStatus("generating image", `AI working… ${s}s`);
+        const elapsed = () => Math.round((Date.now() - started) / 1000);
+        const timer = setInterval(() => {
+          showStatus("generating image", `AI working… ${elapsed()}s`);
         }, 1000);
+
         try {
-          for (let i = 0; i < models.length; i++) {
-            const url = GEN_IMG(promptText, models[i]);
+          // 0) Cloud backend (if configured) — keys stay server-side
+          if (AR_API_BASE) {
             try {
-              const res = await fetch(url, { mode: "cors", cache: "no-store" });
-              const type = res.headers.get("content-type") || "";
-              if (res.ok && type.startsWith("image/")) {
-                const blob = await res.blob();
+              showStatus("generating image", "cloud backend");
+              const r = await withTimeout(
+                fetch(`${AR_API_BASE}/api/image?prompt=${encodeURIComponent(promptText)}`, { mode: "cors" }),
+                60000,
+                "backend"
+              );
+              if (r.ok) {
+                const blob = await r.blob();
                 if (blob.size > 3000) {
-                  showStatus("image ready", `${Math.round((Date.now() - started) / 1000)}s`);
+                  showStatus("image ready", `${elapsed()}s`);
                   return { url: URL.createObjectURL(blob), blob };
                 }
               }
-              const ra = Number(res.headers.get("retry-after") || 0);
-              const wait = Math.min(ra ? ra * 1000 : 1500, 5000);
-              await new Promise((r) => setTimeout(r, wait));
-            } catch (e) {
-              await new Promise((r) => setTimeout(r, 1200));
-            }
+            } catch (e) {}
           }
-          // Backup generators: rotate across free keyless HF Spaces.
+
+          // 1) Quality pass — free HF Spaces (FLUX / SD3.5) at 1024x1536
+          const deadline = Date.now() + 55000;
           for (const space of HF_SPACES) {
+            if (Date.now() > deadline) break;
             if (isCooling(space.id, "space0000")) continue;
             try {
-              showStatus("switching generator", `${space.id} (backup)`);
-              const out = await hfSpaceImage(space, promptText);
-              showStatus("image ready", `${Math.round((Date.now() - started) / 1000)}s`);
+              showStatus("generating image", `${space.id} · high quality`);
+              const out = await withTimeout(hfSpaceImage(space, promptText), Math.max(20000, deadline - Date.now()), space.id);
+              showStatus("image ready", `${elapsed()}s`);
               return out;
             } catch (e) {
               coolDown(space.id, "space0000", 10 * 60 * 1000);
             }
+          }
+
+          // 2) Fast fallback — Pollinations
+          for (const model of ["sana", "flux"]) {
+            try {
+              showStatus("generating image", `${model} · fast mode`);
+              const res = await withTimeout(fetch(GEN_IMG(promptText, model), { mode: "cors", cache: "no-store" }), 45000, model);
+              const type = res.headers.get("content-type") || "";
+              if (res.ok && type.startsWith("image/")) {
+                const blob = await res.blob();
+                if (blob.size > 3000) {
+                  showStatus("image ready", `${elapsed()}s`);
+                  return { url: URL.createObjectURL(blob), blob };
+                }
+              }
+            } catch (e) {}
           }
           return null;
         } finally {
@@ -878,8 +910,8 @@ If the user picks Auto, infer the best category and placement from the image hin
           const catText = `${plan.category || ""} ${selectedOption || ""}`.toLowerCase();
           const isWearable = /(shirt|kurta|kurti|suit|dress|saree|shalwar|kameez|top|jacket|blazer|lehenga|sherwani|trouser|skirt|coat)/.test(catText);
           const look = isWearable
-            ? "full body fashion model wearing it, natural standing pose, plain light grey studio backdrop, soft even lighting, photorealistic, sharp focus, 85mm fashion photography, high detail"
-            : "professional product photography, clean neutral background, soft studio lighting, photorealistic, sharp focus, high detail";
+            ? "full body fashion editorial photo, model wearing it, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
+            : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
           const imagePrompt = `${plan.description || prompt}, ${look}`;
           const gen = await generateImage(imagePrompt);
           if (gen) {
@@ -1008,5 +1040,12 @@ If the user picks Auto, infer the best category and placement from the image hin
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       };
     </script>
-  </body>
+      <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => {});
+        });
+      }
+    </script>
+</body>
 </html>
