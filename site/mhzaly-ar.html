@@ -428,7 +428,7 @@
     </div>
 
     <script>
-      const AR_API_BASE = window.AR_API_BASE || (localStorage.getItem("mhzaly_backend") || "").replace(/\/+$/, "");
+      const AR_API_BASE = (window.AR_API_BASE || localStorage.getItem("mhzaly_backend") || "https://mhzaly-ai.mhzaly.workers.dev").replace(/\/+$/, "");
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
       const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
