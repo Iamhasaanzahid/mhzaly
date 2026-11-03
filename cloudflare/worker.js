@@ -26,7 +26,7 @@ const SYSTEM = `You are an AR asset planner. Reply with JSON only:
 "targetUnits":"meters"}`;
 
 const PROVIDERS = {
-  gemini: { kind: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/models", model: "gemini-2.0-flash" },
+  gemini: { kind: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/models", model: "gemini-flash-latest" },
   groq: { kind: "openai", base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
   openrouter: { kind: "openai", base: "https://openrouter.ai/api/v1", model: "meta-llama/llama-3.1-8b-instruct:free" },
   cerebras: { kind: "openai", base: "https://api.cerebras.ai/v1", model: "llama3.1-8b" },

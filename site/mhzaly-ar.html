@@ -466,7 +466,7 @@ Rules:
 
       // Supported free-tier providers (OpenAI-compatible unless kind=gemini).
       const PROVIDERS = {
-        gemini:      { kind: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/models", model: "gemini-2.0-flash" },
+        gemini:      { kind: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/models", model: "gemini-flash-latest" },
         groq:        { kind: "openai", base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
         openrouter:  { kind: "openai", base: "https://openrouter.ai/api/v1", model: "meta-llama/llama-3.1-8b-instruct:free" },
         cerebras:    { kind: "openai", base: "https://api.cerebras.ai/v1", model: "llama3.1-8b" },
@@ -639,9 +639,11 @@ Rules:
       }
 
       const GEMINI_IMAGE_MODELS = [
+        "gemini-3.1-flash-image",
+        "gemini-3-pro-image",
+        "nano-banana-pro-preview",
         "gemini-2.5-flash-image",
         "gemini-2.5-flash-image-preview",
-        "gemini-2.0-flash-preview-image-generation",
       ];
 
       // True try-on: edits the user's own photo so the garment stays identical.
