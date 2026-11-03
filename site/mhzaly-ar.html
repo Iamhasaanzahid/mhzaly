@@ -570,61 +570,92 @@ If the user picks Auto, infer the best category and placement from the image hin
         });
       }
 
-      // Backup keyless image generator: Hugging Face FLUX.1-schnell space.
-      async function hfImage(promptText) {
-        const base = "https://black-forest-labs-flux-1-schnell.hf.space";
-        const res = await fetch(`${base}/gradio_api/call/infer`, {
+      // Free keyless image generators: rotating pool of public Hugging Face Spaces.
+      const HF_SPACES = [
+        { id: "flux-schnell", base: "https://black-forest-labs-flux-1-schnell.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 768, 1024, 4] },
+        { id: "flux-merged", base: "https://multimodalart-flux-1-merged.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 768, 1024, 3.5, 4] },
+        { id: "flux-dev", base: "https://black-forest-labs-flux-1-dev.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 768, 1024, 3.5, 4] },
+        { id: "sd35-large", base: "https://stabilityai-stable-diffusion-3-5-large.hf.space", ep: "/infer", args: (p, s) => [p, "", s, true, 768, 1024, 4.5, 24] },
+        { id: "realtime-flux", base: "https://kingnish-realtime-flux.hf.space", ep: "/RealtimeFlux", args: (p, s) => [p, s, 768, 1024, true, 4] },
+      ];
+
+      async function hfSpaceImage(space, promptText) {
+        const seed = Math.floor(Math.random() * 1000000);
+        const call = `${space.base}/gradio_api/call${space.ep}`;
+        const res = await fetch(call, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: [promptText, Math.floor(Math.random() * 1e6), true, 768, 1024, 4] }),
+          body: JSON.stringify({ data: space.args(promptText, seed) }),
         });
-        if (!res.ok) throw new Error("hf " + res.status);
+        if (!res.ok) throw new Error(space.id + " " + res.status);
         const { event_id } = await res.json();
-        if (!event_id) throw new Error("hf no event");
-        const sse = await fetch(`${base}/gradio_api/call/infer/${event_id}`);
+        if (!event_id) throw new Error(space.id + " no event");
+
+        const sse = await fetch(`${call}/${event_id}`);
         const text = await sse.text();
-        const line = text.split("\n").find((l) => l.startsWith("data:"));
-        if (!line) throw new Error("hf no data");
-        const arr = JSON.parse(line.slice(5));
-        const url = arr?.[0]?.url;
-        if (!url) throw new Error("hf no url");
-        const imgRes = await fetch(url);
-        if (!imgRes.ok) throw new Error("hf file " + imgRes.status);
+        let payload = null;
+        for (const line of text.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const arr = JSON.parse(line.slice(5));
+            if (Array.isArray(arr)) payload = arr;
+          } catch {}
+        }
+        if (!payload) throw new Error(space.id + " no data");
+        const file = payload.find((x) => x && typeof x === "object" && x.url);
+        if (!file) throw new Error(space.id + " no file");
+
+        const imgRes = await fetch(file.url);
+        if (!imgRes.ok) throw new Error(space.id + " file " + imgRes.status);
         const blob = await imgRes.blob();
+        if (blob.size < 3000) throw new Error(space.id + " tiny");
         return { url: URL.createObjectURL(blob), blob };
       }
 
       // Image generation chain: Pollinations (sana works free) -> flux -> HF FLUX space.
       async function generateImage(promptText) {
         const models = ["sana", "flux", "sana"];
-        for (let i = 0; i < models.length; i++) {
-          const url = GEN_IMG(promptText, models[i]);
-          try {
-            showStatus("generating image", `${models[i]} · attempt ${i + 1}`);
-            const res = await fetch(url, { mode: "cors", cache: "no-store" });
-            const type = res.headers.get("content-type") || "";
-            if (res.ok && type.startsWith("image/")) {
-              const blob = await res.blob();
-              if (blob.size > 3000) return { url: URL.createObjectURL(blob), blob };
+        const started = Date.now();
+        let timer = setInterval(() => {
+          const s = Math.round((Date.now() - started) / 1000);
+          showStatus("generating image", `AI working… ${s}s`);
+        }, 1000);
+        try {
+          for (let i = 0; i < models.length; i++) {
+            const url = GEN_IMG(promptText, models[i]);
+            try {
+              const res = await fetch(url, { mode: "cors", cache: "no-store" });
+              const type = res.headers.get("content-type") || "";
+              if (res.ok && type.startsWith("image/")) {
+                const blob = await res.blob();
+                if (blob.size > 3000) {
+                  showStatus("image ready", `${Math.round((Date.now() - started) / 1000)}s`);
+                  return { url: URL.createObjectURL(blob), blob };
+                }
+              }
+              const ra = Number(res.headers.get("retry-after") || 0);
+              const wait = Math.min(ra ? ra * 1000 : 1500, 5000);
+              await new Promise((r) => setTimeout(r, wait));
+            } catch (e) {
+              await new Promise((r) => setTimeout(r, 1200));
             }
-            const ra = Number(res.headers.get("retry-after") || 0);
-            const wait = Math.min(ra ? ra * 1000 : 2000, 6000);
-            showStatus("retrying image", `${models[i]} busy — ${Math.round(wait / 1000)}s`);
-            await new Promise((r) => setTimeout(r, wait));
-          } catch (e) {
-            await new Promise((r) => setTimeout(r, 1500));
           }
-        }
-        // Backup generator (free, keyless).
-        for (let i = 0; i < 2; i++) {
-          try {
-            showStatus("switching generator", "backup AI (FLUX)");
-            return await hfImage(promptText);
-          } catch (e) {
-            await new Promise((r) => setTimeout(r, 1500));
+          // Backup generators: rotate across free keyless HF Spaces.
+          for (const space of HF_SPACES) {
+            if (isCooling(space.id, "space0000")) continue;
+            try {
+              showStatus("switching generator", `${space.id} (backup)`);
+              const out = await hfSpaceImage(space, promptText);
+              showStatus("image ready", `${Math.round((Date.now() - started) / 1000)}s`);
+              return out;
+            } catch (e) {
+              coolDown(space.id, "space0000", 10 * 60 * 1000);
+            }
           }
+          return null;
+        } finally {
+          clearInterval(timer);
         }
-        return null;
       }
 
       async function freeAiPlan(promptText) {
