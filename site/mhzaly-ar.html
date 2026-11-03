@@ -431,7 +431,7 @@
       const AR_API_BASE = window.AR_API_BASE || (localStorage.getItem("mhzaly_backend") || "").replace(/\/+$/, "");
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
-      const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
+      const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
       const AGENT_SYSTEM = `You are a senior fashion art director and AR planner.
 The user uploads a photo and may pick an item or type a request.
 Read their words carefully and convert them into a precise image-generation brief.
@@ -1018,6 +1018,29 @@ Rules:
         return { url: URL.createObjectURL(blob), blob };
       }
 
+      // Pollinations stamps a small logo bottom-right; crop it and normalise size.
+      async function cleanPollinations(blob) {
+        try {
+          const img = await new Promise((res, rej) => {
+            const u = URL.createObjectURL(blob);
+            const i = new Image();
+            i.onload = () => { URL.revokeObjectURL(u); res(i); };
+            i.onerror = () => { URL.revokeObjectURL(u); rej(new Error("bad image")); };
+            i.src = u;
+          });
+          const W = 1024, H = 1536;
+          const crop = Math.round(img.naturalHeight * 0.028);
+          const out = document.createElement("canvas");
+          out.width = W; out.height = H;
+          const c = out.getContext("2d");
+          c.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight - crop, 0, 0, W, H);
+          const b2 = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.94));
+          return b2 && b2.size > 3000 ? b2 : blob;
+        } catch (e) {
+          return blob;
+        }
+      }
+
       // Free keyless image generators: rotating pool of public Hugging Face Spaces.
       const HF_SPACES = [
         { id: "flux-schnell", base: "https://black-forest-labs-flux-1-schnell.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 4] },
@@ -1109,20 +1132,28 @@ Rules:
             }
           }
 
-          // 2) Fast fallback — Pollinations
-          for (const model of ["sana", "flux"]) {
+          // 2) Free generator — Pollinations (1 image per ~35s, so wait + retry once)
+          for (let attempt = 0; attempt < 2; attempt++) {
             try {
-              showStatus("generating image", `${model} · fast mode`);
-              const res = await withTimeout(fetch(GEN_IMG(promptText, model), { mode: "cors", cache: "no-store" }), 45000, model);
+              showStatus("generating image", attempt === 0 ? "sana · free AI" : "sana · retry");
+              const res = await withTimeout(fetch(GEN_IMG(promptText, "sana"), { mode: "cors", cache: "no-store" }), 60000, "sana");
               const type = res.headers.get("content-type") || "";
               if (res.ok && type.startsWith("image/")) {
-                const blob = await res.blob();
-                if (blob.size > 3000) {
+                const raw = await res.blob();
+                if (raw.size > 3000) {
+                  const blob = await cleanPollinations(raw);
                   showStatus("image ready", `${elapsed()}s`);
                   return { url: URL.createObjectURL(blob), blob };
                 }
               }
+              if (res.status === 402 || res.status === 429) {
+                const wait = Math.min(45, parseInt(res.headers.get("retry-after") || "30", 10) || 30);
+                showStatus("queued", `free limit — waiting ${wait}s`);
+                await new Promise((r) => setTimeout(r, (wait + 1) * 1000));
+                continue;
+              }
             } catch (e) {}
+            break;
           }
           return null;
         } finally {
@@ -1403,7 +1434,7 @@ Rules:
           }
           if (!gen && selectedFile) {
             try {
-              showStatus("rendering", "same design, studio finish");
+              showStatus("rendering", "AI busy — exact design render");
               gen = await designLockedRender(selectedFile);
             } catch (e) { gen = null; }
           }
