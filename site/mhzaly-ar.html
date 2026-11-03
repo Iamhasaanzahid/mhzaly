@@ -148,20 +148,14 @@
                     <span class="ar-file-name" id="ar-file-name">No image selected</span>
                   </div>
                   <details class="ar-ai-settings">
-                    <summary>AI settings — use your own free key (optional)</summary>
-                    <div class="ar-ai-body">
-                      <select id="ar-provider" aria-label="AI provider">
-                        <option value="free">Free (no key) — default</option>
-                        <option value="openrouter">OpenRouter (free models)</option>
-                        <option value="groq">Groq (free tier)</option>
-                        <option value="gemini">Google Gemini (free tier)</option>
-                        <option value="custom">Custom OpenAI-compatible</option>
-                      </select>
-                      <input id="ar-api-key" type="password" autocomplete="off" placeholder="Paste your free API key (saved in this browser only)" />
-                      <input id="ar-model" type="text" autocomplete="off" placeholder="Model (optional, e.g. gemini-2.0-flash)" />
-                      <input id="ar-base" type="url" autocomplete="off" placeholder="Base URL (custom only, e.g. https://api.example.com/v1)" />
-                      <button class="ar-btn" id="ar-save-ai" type="button">Save</button>
-                      <span class="ar-ai-status" id="ar-ai-status"></span>
+                    <summary>AI key pool — unlimited free keys, auto-failover</summary>
+                    <div class="ar-ai-body ar-ai-pool">
+                      <textarea id="ar-keys" rows="4" spellcheck="false" placeholder="Ek line me ek key, aise:&#10;gemini: AIza...&#10;groq: gsk_...&#10;openrouter: sk-or-...&#10;cerebras: csk-...&#10;mistral: ...&#10;huggingface: hf_..."></textarea>
+                      <div class="ar-ai-row">
+                        <button class="ar-btn" id="ar-save-ai" type="button">Save keys</button>
+                        <span class="ar-ai-status" id="ar-ai-status">free mode — no keys needed</span>
+                      </div>
+                      <p class="ar-ai-note">Jitni chahe keys daalo — app khud rotate karega, limit kabhi nahi khategi. Keys sirf aapke browser me save hoti hain.</p>
                     </div>
                   </details>
                 </div>
@@ -420,7 +414,7 @@
       const AR_API_BASE = window.AR_API_BASE || "";
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
-      const GEN_IMG = (p, model = "flux") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&model=${model}&seed=${Math.floor(Math.random() * 1e9)}`;
+      const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
       const AGENT_SYSTEM = `You are MHZALY's agentic AR engine. The user uploads a photo and may pick what to build.
 Respond ONLY with JSON:
 {"assetType":"3d-model","category":"kurta|shirt|suit|shalwar kameez|dress|saree|curtains|sofa|bag|shoes|other","placement":"body|window|floor|wall|table","style":"photoreal","description":"one clear sentence describing the item, colour and material","targetUnits":"meters"}
@@ -439,29 +433,62 @@ If the user picks Auto, infer the best category and placement from the image hin
       const arAgainBtn = document.getElementById("ar-again-btn");
       const arChips = document.getElementById("ar-chips");
       const arPrompt = document.getElementById("ar-prompt");
-      const arProvider = document.getElementById("ar-provider");
-      const arApiKey = document.getElementById("ar-api-key");
-      const arModel = document.getElementById("ar-model");
-      const arBase = document.getElementById("ar-base");
+      const arKeys = document.getElementById("ar-keys");
       const arSaveAi = document.getElementById("ar-save-ai");
       const arAiStatus = document.getElementById("ar-ai-status");
-      const AI_KEY = "mhzaly_ai_cfg";
+      const AI_KEY = "mhzaly_ai_keys";
+      const AI_COOL = "mhzaly_ai_cool";
 
-      function getCfg() {
-        try { return JSON.parse(localStorage.getItem(AI_KEY) || "{}"); } catch { return {}; }
+      // Supported free-tier providers (OpenAI-compatible unless kind=gemini).
+      const PROVIDERS = {
+        gemini:      { kind: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/models", model: "gemini-2.0-flash" },
+        groq:        { kind: "openai", base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
+        openrouter:  { kind: "openai", base: "https://openrouter.ai/api/v1", model: "meta-llama/llama-3.1-8b-instruct:free" },
+        cerebras:    { kind: "openai", base: "https://api.cerebras.ai/v1", model: "llama3.1-8b" },
+        mistral:     { kind: "openai", base: "https://api.mistral.ai/v1", model: "mistral-small-latest" },
+        together:    { kind: "openai", base: "https://api.together.xyz/v1", model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo" },
+        huggingface: { kind: "openai", base: "https://api-inference.huggingface.co/v1", model: "meta-llama/Llama-3.1-8B-Instruct" },
+        deepinfra:   { kind: "openai", base: "https://api.deepinfra.com/v1/openai", model: "meta-llama/Meta-Llama-3.1-8B-Instruct" },
+        sambanova:   { kind: "openai", base: "https://api.sambanova.ai/v1", model: "Meta-Llama-3.1-8B-Instruct" },
+      };
+
+      function parseKeys() {
+        const raw = localStorage.getItem(AI_KEY) || "";
+        const out = [];
+        raw.split(/\r?\n/).forEach((line) => {
+          const m = line.match(/^\s*([a-zA-Z]+)\s*[:=]\s*(\S+)\s*$/);
+          if (m && PROVIDERS[m[1].toLowerCase()]) out.push({ provider: m[1].toLowerCase(), key: m[2] });
+        });
+        return out;
+      }
+      function getCool() {
+        try { return JSON.parse(localStorage.getItem(AI_COOL) || "{}"); } catch { return {}; }
+      }
+      function setCool(map) { localStorage.setItem(AI_COOL, JSON.stringify(map)); }
+      function keyId(p, k) { return p + ":" + k.slice(-8); }
+      function isCooling(p, k) { return (getCool()[keyId(p, k)] || 0) > Date.now(); }
+      function coolDown(p, k, ms) {
+        const map = getCool();
+        map[keyId(p, k)] = Date.now() + ms;
+        setCool(map);
+      }
+      function refreshPoolStatus() {
+        const keys = parseKeys();
+        if (!keys.length) { arAiStatus.textContent = "free mode — no keys needed"; return; }
+        const groups = {};
+        keys.forEach(({ provider }) => { groups[provider] = (groups[provider] || 0) + 1; });
+        const active = keys.filter(({ provider, key }) => !isCooling(provider, key)).length;
+        arAiStatus.textContent = `${keys.length} keys · ${Object.keys(groups).length} providers · ${active} ready`;
       }
       (function loadCfg() {
-        const c = getCfg();
-        if (c.provider) arProvider.value = c.provider;
-        if (c.key) arApiKey.value = c.key;
-        if (c.model) arModel.value = c.model;
-        if (c.base) arBase.value = c.base;
-        if (c.key) arAiStatus.textContent = `using ${c.provider}`;
+        const saved = localStorage.getItem(AI_KEY);
+        if (saved) arKeys.value = saved;
+        refreshPoolStatus();
       })();
       arSaveAi.addEventListener("click", () => {
-        const c = { provider: arProvider.value, key: arApiKey.value.trim(), model: arModel.value.trim(), base: arBase.value.trim() };
-        localStorage.setItem(AI_KEY, JSON.stringify(c));
-        arAiStatus.textContent = c.provider === "free" ? "free mode — no key needed" : `saved — ${c.provider}`;
+        localStorage.setItem(AI_KEY, arKeys.value.trim());
+        localStorage.removeItem(AI_COOL);
+        refreshPoolStatus();
       });
       const arResultMeta = document.getElementById("ar-result-meta");
       const arDownload = document.getElementById("ar-download");
@@ -567,24 +594,25 @@ If the user picks Auto, infer the best category and placement from the image hin
         return { url: URL.createObjectURL(blob), blob };
       }
 
-      // Fetch image with retry/backoff (Pollinations rate-limits with 402 + retry-after).
+      // Image generation chain: Pollinations (sana works free) -> flux -> HF FLUX space.
       async function generateImage(promptText) {
-        const models = ["flux", "turbo"];
+        const models = ["sana", "flux", "sana"];
         for (let i = 0; i < models.length; i++) {
           const url = GEN_IMG(promptText, models[i]);
           try {
+            showStatus("generating image", `${models[i]} · attempt ${i + 1}`);
             const res = await fetch(url, { mode: "cors", cache: "no-store" });
             const type = res.headers.get("content-type") || "";
             if (res.ok && type.startsWith("image/")) {
               const blob = await res.blob();
-              return { url: URL.createObjectURL(blob), blob };
+              if (blob.size > 3000) return { url: URL.createObjectURL(blob), blob };
             }
             const ra = Number(res.headers.get("retry-after") || 0);
-            const wait = Math.min(ra ? ra * 1000 : 3000, 8000);
+            const wait = Math.min(ra ? ra * 1000 : 2000, 6000);
             showStatus("retrying image", `${models[i]} busy — ${Math.round(wait / 1000)}s`);
             await new Promise((r) => setTimeout(r, wait));
           } catch (e) {
-            await new Promise((r) => setTimeout(r, 2000));
+            await new Promise((r) => setTimeout(r, 1500));
           }
         }
         // Backup generator (free, keyless).
@@ -593,7 +621,7 @@ If the user picks Auto, infer the best category and placement from the image hin
             showStatus("switching generator", "backup AI (FLUX)");
             return await hfImage(promptText);
           } catch (e) {
-            await new Promise((r) => setTimeout(r, 2000));
+            await new Promise((r) => setTimeout(r, 1500));
           }
         }
         return null;
@@ -636,15 +664,13 @@ If the user picks Auto, infer the best category and placement from the image hin
         }
       }
 
-      // Optional: user's own free key (OpenRouter / Groq / Gemini / custom).
-      async function callProvider(promptText) {
-        const c = getCfg();
-        const provider = c.provider || "free";
-        if (provider === "free" || !c.key) return freeAiPlan(promptText);
+      // ---- Key pool: rotate across every free key the user adds ----
+      async function callOne(provider, key, promptText) {
+        const cfg = PROVIDERS[provider];
+        if (!cfg) throw new Error("unknown provider " + provider);
 
-        if (provider === "gemini") {
-          const model = c.model || "gemini-2.0-flash";
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(c.key)}`;
+        if (cfg.kind === "gemini") {
+          const url = `${cfg.base}/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(key)}`;
           const res = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -654,25 +680,16 @@ If the user picks Auto, infer the best category and placement from the image hin
               generationConfig: { responseMimeType: "application/json", temperature: 0.8 },
             }),
           });
-          if (!res.ok) throw new Error("gemini " + res.status);
+          if (!res.ok) throw new Error(provider + " " + res.status);
           const data = await res.json();
           return parsePlan(data?.candidates?.[0]?.content?.parts?.[0]?.text || "");
         }
 
-        const base = provider === "openrouter"
-          ? "https://openrouter.ai/api/v1"
-          : provider === "groq"
-            ? "https://api.groq.com/openai/v1"
-            : (c.base || "").replace(/\/+$/, "");
-        if (!base) throw new Error("base url missing");
-        const model = c.model || (provider === "openrouter"
-          ? "meta-llama/llama-3.1-8b-instruct:free"
-          : provider === "groq" ? "llama-3.1-8b-instant" : "");
-        const res = await fetch(`${base}/chat/completions`, {
+        const res = await fetch(`${cfg.base}/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.key}` },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
           body: JSON.stringify({
-            model,
+            model: cfg.model,
             messages: [
               { role: "system", content: AGENT_SYSTEM },
               { role: "user", content: promptText },
@@ -683,6 +700,27 @@ If the user picks Auto, infer the best category and placement from the image hin
         if (!res.ok) throw new Error(provider + " " + res.status);
         const data = await res.json();
         return parsePlan(data?.choices?.[0]?.message?.content || "");
+      }
+
+      // Try every pooled key (skipping ones in cooldown), then fall back to keyless free AI.
+      async function callProvider(promptText) {
+        const keys = parseKeys();
+        for (const { provider, key } of keys) {
+          if (isCooling(provider, key)) continue;
+          try {
+            const plan = await callOne(provider, key, promptText);
+            if (plan && (plan.description || plan.assetType)) {
+              refreshPoolStatus();
+              return plan;
+            }
+          } catch (e) {
+            const msg = String(e && e.message || "");
+            const ms = /429/.test(msg) ? 60000 : /401|403/.test(msg) ? 86400000 : 15000;
+            coolDown(provider, key, ms);
+          }
+        }
+        refreshPoolStatus();
+        return freeAiPlan(promptText);
       }
 
       // Always works: local plan when the free provider is down or rate-limited.
@@ -806,8 +844,12 @@ If the user picks Auto, infer the best category and placement from the image hin
           setStep(2);
           await new Promise((r) => setTimeout(r, 600));
           arResultDesc.textContent = "Generating your 3D preview…";
-          const imagePrompt = `${plan.description || prompt}, photoreal, studio lighting, soft shadows, high detail, 8k product photography, magazine editorial photography`;
-          arResultDesc.textContent = "Generating your 3D preview…";
+          const catText = `${plan.category || ""} ${selectedOption || ""}`.toLowerCase();
+          const isWearable = /(shirt|kurta|kurti|suit|dress|saree|shalwar|kameez|top|jacket|blazer|lehenga|sherwani|trouser|skirt|coat)/.test(catText);
+          const look = isWearable
+            ? "full body fashion model wearing it, natural standing pose, plain light grey studio backdrop, soft even lighting, photorealistic, sharp focus, 85mm fashion photography, high detail"
+            : "professional product photography, clean neutral background, soft studio lighting, photorealistic, sharp focus, high detail";
+          const imagePrompt = `${plan.description || prompt}, ${look}`;
           const gen = await generateImage(imagePrompt);
           if (gen) {
             arResultImg.src = gen.url;
