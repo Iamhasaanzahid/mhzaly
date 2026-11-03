@@ -143,6 +143,11 @@
                     <button type="button" class="ar-chip" data-opt="Shoes">Shoes</button>
                   </div>
                   <textarea id="ar-prompt" class="ar-prompt" rows="2" placeholder="Optional details — colour, fabric, room… e.g. “cream kurta, place on body”"></textarea>
+                  <div class="ar-mode" id="ar-mode">
+                    <button type="button" class="ar-mode-btn is-on" data-mode="ai">AI style</button>
+                    <button type="button" class="ar-mode-btn" data-mode="exact">Exact design</button>
+                    <span class="ar-mode-note" id="ar-mode-note">AI photo banaega — aapki photo ke rang</span>
+                  </div>
                   <div class="foot">
                     <button class="ar-btn" id="ar-generate-btn" disabled>Generate with AI</button>
                     <span class="ar-file-name" id="ar-file-name">No image selected</span>
@@ -518,6 +523,26 @@ Rules:
         if (be && arBackend) arBackend.value = be;
         refreshPoolStatus();
       })();
+      let genMode = localStorage.getItem("mhzaly_gen_mode") || "ai";
+      const arModeNote = document.getElementById("ar-mode-note");
+      (function initMode() {
+        const btns = document.querySelectorAll(".ar-mode-btn");
+        const note = {
+          ai: "AI photo banaega — aapki photo ke rang",
+          exact: "Aapki hi photo — design 100% same",
+        };
+        btns.forEach((b) => {
+          b.classList.toggle("is-on", b.dataset.mode === genMode);
+          b.addEventListener("click", () => {
+            genMode = b.dataset.mode;
+            localStorage.setItem("mhzaly_gen_mode", genMode);
+            btns.forEach((x) => x.classList.toggle("is-on", x === b));
+            if (arModeNote) arModeNote.textContent = note[genMode];
+          });
+        });
+        if (arModeNote) arModeNote.textContent = note[genMode];
+      })();
+
       const arQuickKey = document.getElementById("ar-quick-key");
       const arQuickSave = document.getElementById("ar-quick-save");
       const arTryonNote = document.getElementById("ar-tryon-note");
@@ -1342,9 +1367,10 @@ Rules:
           const look = isWearable
             ? "full body fashion editorial photo, model wearing it, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
             : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
-          const imagePrompt = plan.imagePrompt
+          const pal = palette.length ? ` Colour palette: ${palette.join(", ")}.` : "";
+          const imagePrompt = (plan.imagePrompt
             ? String(plan.imagePrompt)
-            : `${plan.description || prompt}, ${look}`;
+            : `${plan.description || prompt}, ${look}`) + pal;
           const geminiKey = (parseKeys().find((k) => k.provider === "gemini") || {}).key;
           let gen = null;
           if (geminiKey && selectedFile) {
@@ -1359,6 +1385,17 @@ Rules:
               gen = null;
             }
           }
+          if (!gen && selectedFile && genMode === "exact") {
+            try {
+              showStatus("rendering", "same design, studio finish");
+              gen = await designLockedRender(selectedFile);
+            } catch (e) { gen = null; }
+          }
+          if (!gen) {
+            try {
+              gen = await generateImage(imagePrompt);
+            } catch (e) { gen = null; }
+          }
           if (!gen && selectedFile) {
             try {
               showStatus("rendering", "same design, studio finish");
@@ -1366,10 +1403,8 @@ Rules:
             } catch (e) { gen = null; }
           }
           if (!gen && selectedFile) {
-            // Last resort: never invent a different garment.
             gen = { url: URL.createObjectURL(selectedFile), blob: selectedFile };
           }
-          if (!gen) gen = await generateImage(imagePrompt);
           if (gen) {
             arResultImg.src = gen.url;
             arResultDesc.textContent = plan.description || "3D AR asset ready.";

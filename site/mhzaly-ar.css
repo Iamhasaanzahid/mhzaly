@@ -304,3 +304,25 @@ body{overflow-x:hidden}
   white-space: nowrap;
 }
 .ar-tryon-note { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: rgba(221, 214, 254, 0.75); }
+
+/* AI style / exact design switch */
+.ar-mode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 14px 0 10px; }
+.ar-mode-btn {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  background: rgba(30, 20, 55, 0.5);
+  color: rgba(221, 214, 254, 0.8);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.ar-mode-btn:hover { border-color: rgba(196, 181, 253, 0.6); color: #fff; }
+.ar-mode-btn.is-on {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
+}
+.ar-mode-note { font-size: 11.5px; color: rgba(196, 181, 253, 0.7); }
