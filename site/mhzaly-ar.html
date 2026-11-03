@@ -667,7 +667,37 @@ Rules:
                 generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
               }),
             });
-            if (!res.ok) throw new Error(model + " " + res.status);
+            if (!res.ok) {
+              const status = res.status;
+              // quota / busy -> wait and retry once on the same model
+              if (status === 429 || status === 503) {
+                await new Promise((r) => setTimeout(r, status === 429 ? 6000 : 3000));
+                const again = await fetch(url, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{
+                      parts: [
+                        { text: instruction },
+                        { inline_data: { mime_type: mime, data } },
+                      ],
+                    }],
+                    generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+                  }),
+                });
+                if (again.ok) {
+                  const j2 = await again.json();
+                  const ps2 = j2?.candidates?.[0]?.content?.parts || [];
+                  const im2 = ps2.find((x) => x.inlineData || x.inline_data);
+                  if (im2) {
+                    const d2 = im2.inlineData || im2.inline_data;
+                    const b2 = b64ToBlob(d2.data, d2.mimeType || d2.mime_type);
+                    if (b2.size > 3000) return { url: URL.createObjectURL(b2), blob: b2 };
+                  }
+                }
+              }
+              throw new Error(model + " " + status);
+            }
             const json = await res.json();
             const parts = json?.candidates?.[0]?.content?.parts || [];
             const img = parts.find((x) => x.inlineData || x.inline_data);
