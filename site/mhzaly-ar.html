@@ -156,7 +156,7 @@
                         <span class="ar-ai-status" id="ar-ai-status">free mode — no keys needed</span>
                       </div>
                       <input id="ar-backend" type="url" autocomplete="off" placeholder="Cloud backend URL (optional) — e.g. https://mhzaly-ai.you.workers.dev" />
-                      <p class="ar-ai-note">Jitni chahe keys daalo — app khud rotate karega, limit kabhi nahi khategi. Keys sirf aapke browser me save hoti hain.</p>
+                      <p class="ar-ai-note">Jitni chahe keys daalo — app khud rotate karega. <strong>Same-design try-on</strong> ke liye ek <strong>Gemini</strong> key zaroori hai (free). Keys sirf aapke browser me save hoti hain.</p>
                     </div>
                   </details>
                 </div>
@@ -416,10 +416,22 @@
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
       const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=768&height=1024&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
-      const AGENT_SYSTEM = `You are MHZALY's agentic AR engine. The user uploads a photo and may pick what to build.
-Respond ONLY with JSON:
-{"assetType":"3d-model","category":"kurta|shirt|suit|shalwar kameez|dress|saree|curtains|sofa|bag|shoes|other","placement":"body|window|floor|wall|table","style":"photoreal","description":"one clear sentence describing the item, colour and material","targetUnits":"meters"}
-If the user picks Auto, infer the best category and placement from the image hint.`;
+      const AGENT_SYSTEM = `You are a senior fashion art director and AR planner.
+The user uploads a photo and may pick an item or type a request.
+Read their words carefully and convert them into a precise image-generation brief.
+Respond ONLY with JSON, no markdown:
+{"assetType":"3d-model",
+ "category":"kurta|shirt|suit|shalwar kameez|dress|saree|lehenga|curtains|sofa|bag|shoes|other",
+ "placement":"body|window|floor|wall|table",
+ "style":"photoreal",
+ "description":"one vivid sentence naming the exact item, its exact colours, fabric and pattern",
+ "imagePrompt":"a detailed 90-140 word text-to-image prompt that reproduces EXACTLY what the user asked for. Include: item type, exact colours, fabric texture, embroidery/print, fit, model pose, framing, background, lighting and camera. Never add unrelated items or change the colour.",
+ "targetUnits":"meters"}
+Rules:
+- Obey the user's explicit words (colour, style, fabric) over your own taste.
+- If the user picks Auto, infer the most likely item from the file hint.
+- Keep imagePrompt literal and visual; no camera-agnostic filler.`;
+
 
       const arGenerateBtn = document.getElementById("ar-generate-btn");
       const arImgInput = document.getElementById("ar-img-input");
@@ -578,6 +590,56 @@ If the user picks Auto, infer the best category and placement from the image hin
         });
       }
 
+      function b64ToBlob(b64, mime) {
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return new Blob([arr], { type: mime || "image/png" });
+      }
+
+      const GEMINI_IMAGE_MODELS = [
+        "gemini-2.5-flash-image",
+        "gemini-2.5-flash-image-preview",
+        "gemini-2.0-flash-preview-image-generation",
+      ];
+
+      // True try-on: edits the user's own photo so the garment stays identical.
+      async function geminiEdit(file, instruction, key) {
+        const data = await fileToBase64(file);
+        const mime = file.type || "image/png";
+        let lastErr = null;
+        for (const model of GEMINI_IMAGE_MODELS) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    { text: instruction },
+                    { inline_data: { mime_type: mime, data } },
+                  ],
+                }],
+                generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+              }),
+            });
+            if (!res.ok) throw new Error(model + " " + res.status);
+            const json = await res.json();
+            const parts = json?.candidates?.[0]?.content?.parts || [];
+            const img = parts.find((x) => x.inlineData || x.inline_data);
+            if (!img) throw new Error(model + " no image");
+            const d = img.inlineData || img.inline_data;
+            const blob = b64ToBlob(d.data, d.mimeType || d.mime_type);
+            if (blob.size < 3000) throw new Error(model + " tiny");
+            return { url: URL.createObjectURL(blob), blob };
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error("gemini image failed");
+      }
+
       // Free keyless image generators: rotating pool of public Hugging Face Spaces.
       const HF_SPACES = [
         { id: "flux-schnell", base: "https://black-forest-labs-flux-1-schnell.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 4] },
@@ -691,7 +753,7 @@ If the user picks Auto, infer the best category and placement from the image hin
       }
 
       async function freeAiPlan(promptText) {
-        const models = ["openai", "mistral", "openai"];
+        const models = ["openai-fast", "openai", "openai-fast"];
         let lastErr = null;
         for (let i = 0; i < models.length; i++) {
           try {
@@ -704,6 +766,7 @@ If the user picks Auto, infer the best category and placement from the image hin
                   { role: "system", content: AGENT_SYSTEM },
                   { role: "user", content: promptText },
                 ],
+                temperature: 0.7,
               }),
             });
             if (!res.ok) throw new Error("free AI " + res.status);
@@ -814,12 +877,17 @@ If the user picks Auto, infer the best category and placement from the image hin
           ["shoe", "shoes", "floor"],
         ];
         const hit = map.find(([k]) => raw.includes(k)) || ["", "3D asset", "floor"];
+        const asked = (arPrompt.value || "").trim();
+        const item = asked || hit[1];
         return {
           assetType: "3d-model",
           category: hit[1],
           placement: hit[2],
           style: "photoreal",
-          description: `Photoreal ${hit[1]} with true-to-life colour, soft fabric detail and studio lighting, ready for AR.`,
+          description: asked
+            ? `${asked.charAt(0).toUpperCase()}${asked.slice(1)}.`
+            : `Photoreal ${hit[1]} with true-to-life colour, soft fabric detail and studio lighting, ready for AR.`,
+          imagePrompt: `${item}, photographed exactly as described, true-to-life colours, accurate fabric texture and pattern, professional fashion photography, soft studio lighting, sharp focus, high resolution`,
           targetUnits: "meters",
         };
       }
@@ -912,8 +980,24 @@ If the user picks Auto, infer the best category and placement from the image hin
           const look = isWearable
             ? "full body fashion editorial photo, model wearing it, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
             : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
-          const imagePrompt = `${plan.description || prompt}, ${look}`;
-          const gen = await generateImage(imagePrompt);
+          const imagePrompt = plan.imagePrompt
+            ? String(plan.imagePrompt)
+            : `${plan.description || prompt}, ${look}`;
+          const geminiKey = (parseKeys().find((k) => k.provider === "gemini") || {}).key;
+          let gen = null;
+          if (geminiKey && selectedFile) {
+            try {
+              showStatus("try-on", "keeping your exact design");
+              gen = await geminiEdit(
+                selectedFile,
+                "Edit this photo. Keep the garment EXACTLY as it is — same colour, same fabric, same print or embroidery, same cut and design. Show it on a professional fashion model, full body, natural standing pose, plain light grey seamless studio backdrop, soft diffused studio lighting, photorealistic, sharp focus, high resolution. Do not redesign or recolour the garment.",
+                geminiKey
+              );
+            } catch (e) {
+              gen = null;
+            }
+          }
+          if (!gen) gen = await generateImage(imagePrompt);
           if (gen) {
             arResultImg.src = gen.url;
             arResultDesc.textContent = plan.description || "3D AR asset ready.";
