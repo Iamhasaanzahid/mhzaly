@@ -118,8 +118,8 @@ async function planFor(prompt) {
 
 const SPACES = [
   { id: "flux-schnell", base: "https://black-forest-labs-flux-1-schnell.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 4] },
-  { id: "flux-merged", base: "https://multimodalart-flux-1-merged.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 3.5, 4] },
-  { id: "flux-dev", base: "https://black-forest-labs-flux-1-dev.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 3.5, 4] },
+  { id: "flux-merged", base: "https://multimodalart-flux-1-merged.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 3.5, 20] },
+  { id: "flux-dev", base: "https://black-forest-labs-flux-1-dev.hf.space", ep: "/infer", args: (p, s) => [p, s, true, 1024, 1536, 3.5, 25] },
   { id: "sd35", base: "https://stabilityai-stable-diffusion-3-5-large.hf.space", ep: "/infer", args: (p, s) => [p, "blurry, low quality, text, watermark", s, true, 1024, 1536, 4.5, 24] },
 ];
 
@@ -170,8 +170,42 @@ export default {
     if (url.pathname === "/api/image") {
       const prompt = String(url.searchParams.get("prompt") || "").slice(0, 1200);
       if (!prompt) return json({ error: "prompt required" }, 400);
-      // Pollinations first: runs from Cloudflare's network, so a local ISP
-      // block or a slow upstream on the visitor's side never matters.
+
+      // 0) Cloudflare Workers AI — free, runs inside Cloudflare, no key, very reliable.
+      //    FLUX.1-schnell gives the best prompt adherence; SDXL is the portrait fallback.
+      const wantTall = url.searchParams.get("shape") !== "square";
+      if (env && env.AI) {
+        try {
+          const model = url.searchParams.get("model") || "@cf/black-forest-labs/flux-1-schnell";
+          const out = model.includes("stability")
+            ? await env.AI.run(model, { prompt, num_steps: 30, guidance: 7.5, width: 1024, height: 1536 })
+            : await env.AI.run(model, { prompt, steps: 6 });
+          if (out && out.image) {
+            const bin = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
+            if (bin.length > 3000) {
+              return new Response(bin, {
+                headers: { ...CORS, "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
+              });
+            }
+          }
+        } catch {}
+      }
+
+      // 1) FLUX / SD3.5 on public HF Spaces — best prompt adherence at 1024x1536.
+      //    Runs from Cloudflare's network, so the visitor's ISP never matters.
+      //    Two rounds: HF Spaces sometimes sleep and need a wake-up call.
+      const deadline = Date.now() + 50000;
+      for (const space of SPACES) {
+        if (Date.now() > deadline) break;
+        try {
+          const out = await Promise.race([
+            hfImage(space, prompt),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("space timeout")), 40000)),
+          ]);
+          if (out) return out;
+        } catch {}
+      }
+      // 2) Pollinations fallback (free tier: 1 image per ~35s).
       const seed = Math.floor(Math.random() * 1e9);
       const poll = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1536&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
       try {
@@ -183,9 +217,6 @@ export default {
           });
         }
       } catch {}
-      for (const space of SPACES) {
-        try { return await hfImage(space, prompt); } catch {}
-      }
       return json({ error: "image unavailable" }, 502);
     }
 

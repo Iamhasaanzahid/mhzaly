@@ -1104,7 +1104,7 @@ Rules:
               showStatus("generating image", "cloud backend");
               const r = await withTimeout(
                 fetch(`${AR_API_BASE}/api/image?prompt=${encodeURIComponent(promptText)}`, { mode: "cors" }),
-                60000,
+                90000,
                 "backend"
               );
               if (r.ok) {
@@ -1396,7 +1396,7 @@ Rules:
           const catText = `${plan.category || ""} ${selectedOption || ""}`.toLowerCase();
           const isWearable = /(shirt|kurta|kurti|suit|dress|saree|shalwar|kameez|top|jacket|blazer|lehenga|sherwani|trouser|skirt|coat)/.test(catText);
           const look = isWearable
-            ? "full body fashion editorial photo, model wearing it, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
+            ? "full body fashion editorial photo, model wearing it, centered vertical portrait composition, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
             : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
           // If the user typed their own words, honour them literally — no rewriting.
           const typed = (arPrompt.value || "").trim();

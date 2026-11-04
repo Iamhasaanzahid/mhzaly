@@ -1,0 +1,11 @@
+{
+  // MHZALY AI proxy — free Cloudflare Worker.
+  // Deploy from this folder:  npx wrangler deploy
+  "name": "mhzaly-ai",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  // Free Workers AI (FLUX / SDXL) — no API key needed, runs inside Cloudflare.
+  "ai": {
+    "binding": "AI"
+  }
+}
