@@ -25,6 +25,16 @@ Every layer returns a proper `image/*` body with CORS headers, otherwise
 `502 {"error":"image unavailable"}` so the site can fall back to the
 design-locked render.
 
+## Vision (`POST /api/vision`)
+
+Body: `{ "image": "<base64 jpeg>" }` → `{ ok, model, description }`.
+
+Reads the uploaded garment and returns one dense sentence, e.g.
+*"blue and yellow dress with a gold border and embroidery"*. The site sends a
+768 px JPEG, then uses the sentence in the image prompt, so the generated model
+wears the **same garment** (colour, print, embroidery, borders) instead of a
+random one. Runs on `@cf/llava-hf/llava-1.5-7b-hf` (~3 s).
+
 ## Text planning (`POST /api/generate`)
 
 Optional. Uses any provider keys set as secrets (`GEMINI_KEYS`, `GROQ_KEYS`,

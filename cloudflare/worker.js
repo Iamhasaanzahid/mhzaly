@@ -167,6 +167,48 @@ export default {
       return json({ status: "ready", plan });
     }
 
+    // Vision: read the uploaded garment so the generated model wears the SAME design.
+    if (url.pathname === "/api/vision" && request.method === "POST") {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const b64 = String(body.image || "").replace(/^data:image\/[a-z]+;base64,/, "");
+      if (!b64) return json({ error: "image required" }, 400);
+      let bin;
+      try { bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { return json({ error: "bad image" }, 400); }
+      if (bin.length > 4000000) return json({ error: "image too large" }, 413);
+      if (!env || !env.AI) return json({ ok: false, error: "vision unavailable" }, 502);
+      const ask = "You are a fashion buyer. Describe ONLY the garment in this photo with precision: type (kurta, kurti, saree, shirt, suit, dress, jacket...), exact colours, fabric, print or pattern, embroidery, borders, sleeves and neckline. One dense sentence. No preamble, no mention of the person.";
+      const forced = String(body.model || "");
+      const dataUrl = `data:image/jpeg;base64,${b64}`;
+
+      // Llama 3.2 Vision uses the chat/messages shape.
+      if (!forced || forced.includes("llama-3.2")) {
+        try {
+          const out = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: dataUrl } },
+                { type: "text", text: ask },
+              ],
+            }],
+            max_tokens: 220,
+          });
+          const text = String(out.response || out.description || "").trim();
+          if (text.length > 8) return json({ ok: true, model: "llama-3.2-11b-vision", description: text });
+        } catch {}
+      }
+
+      for (const m of [forced, "@cf/llava-hf/llava-1.5-7b-hf", "@cf/unum/uform-gen2-qwen-500m"].filter(Boolean)) {
+        try {
+          const out = await env.AI.run(m, { image: [...bin], prompt: ask, max_tokens: 220 });
+          const text = String(out.description || out.response || "").trim();
+          if (text.length > 8) return json({ ok: true, model: m, description: text });
+        } catch {}
+      }
+      return json({ ok: false, error: "vision failed" }, 502);
+    }
+
     if (url.pathname === "/api/image") {
       const prompt = String(url.searchParams.get("prompt") || "").slice(0, 1200);
       if (!prompt) return json({ error: "prompt required" }, 400);

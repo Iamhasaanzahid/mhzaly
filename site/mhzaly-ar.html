@@ -1018,6 +1018,50 @@ Rules:
         return { url: URL.createObjectURL(blob), blob };
       }
 
+      // Downscale to a small JPEG so the vision model answers fast.
+      async function smallJpegB64(file, max = 768, q = 0.86) {
+        const img = await loadImageFile(file);
+        const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        const url = c.toDataURL("image/jpeg", q);
+        return url.slice(url.indexOf(",") + 1);
+      }
+
+      // "A woman wearing a red shirt" -> "red shirt"
+      function garmentOnly(text) {
+        return String(text || "")
+          .replace(/^(a|an|the)\s+(wo)?m(a|e)n\s+(is\s+)?wearing\s+/i, "")
+          .replace(/^(a|an|the)\s+/i, "")
+          .replace(/\s*\.\s*$/, "")
+          .trim();
+      }
+
+      // Let the AI actually look at the upload, so the render keeps the same design.
+      async function describeGarment(file) {
+        if (!file || !AR_API_BASE) return "";
+        try {
+          showStatus("reading", "AI is looking at your fabric…");
+          const image = await smallJpegB64(file);
+          const r = await withTimeout(
+            fetch(`${AR_API_BASE}/api/vision`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ image }),
+            }),
+            30000,
+            "vision"
+          );
+          if (!r.ok) return "";
+          const j = await r.json();
+          return j && j.ok ? garmentOnly(j.description) : "";
+        } catch (e) {
+          return "";
+        }
+      }
+
       // Pollinations stamps a small logo bottom-right; crop it and normalise size.
       async function cleanPollinations(blob) {
         try {
@@ -1353,10 +1397,15 @@ Rules:
             ? `Build a ${selectedOption.toLowerCase()} from this image`
             : "AI decides what to build from this image";
           const extra = arPrompt.value.trim();
+          // The AI looks at the upload FIRST — everything downstream keeps this design.
+          const garment = selectedFile && genMode !== "exact" ? await describeGarment(selectedFile) : "";
+          if (garment) arResultDesc.textContent = `AI saw: ${garment}`;
           const palette = selectedFile ? await paletteFrom(selectedFile) : [];
-          const colourHint = palette.length
-            ? `The photo's main clothing colours are ${palette.join(", ")} — use these exact colours. `
-            : "";
+          const colourHint = garment
+            ? `The garment in the photo is exactly: ${garment}. Keep this exact design, colour and pattern. `
+            : palette.length
+              ? `The photo's main clothing colours are ${palette.join(", ")} — use these exact colours. `
+              : "";
           const prompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${colourHint}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
           setStep(1);
 
@@ -1403,10 +1452,8 @@ Rules:
           const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(typed);
           const pal = palette.length && !hasColour ? ` Colour palette: ${palette.join(", ")}.` : "";
           const imagePrompt = typed
-            ? `${typed}, ${look}`
-            : (plan.imagePrompt
-                ? String(plan.imagePrompt)
-                : `${plan.description || prompt}, ${look}`) + pal;
+            ? `${typed}${garment ? `. Keep this exact garment: ${garment}` : ""}, ${look}`
+            : `a fashion model wearing ${garment || plan.description || prompt}${pal}, ${look}`;
           const geminiKey = (parseKeys().find((k) => k.provider === "gemini") || {}).key;
           let gen = null;
           if (geminiKey && selectedFile) {
@@ -1443,7 +1490,7 @@ Rules:
           }
           if (gen) {
             arResultImg.src = gen.url;
-            arResultDesc.textContent = plan.description || "3D AR asset ready.";
+            arResultDesc.textContent = garment ? `Same design: ${garment}` : (plan.description || "3D AR asset ready.");
             arDownload.href = gen.url;
             arDownload.hidden = false;
             if (window.__init3D) window.__init3D(gen.url);
