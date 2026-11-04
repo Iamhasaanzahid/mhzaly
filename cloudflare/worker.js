@@ -172,45 +172,96 @@ function mhMultipart(fields, files) {
   return { bytes, contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
-async function flux2Image(env, { prompt, width, height, steps, refBytes }) {
+// ---- free image core -------------------------------------------------------
+// Strategy: free cache -> Workers AI (while the free daily quota lasts) ->
+// Pollinations (free, no daily cap). Everything is keyless.
+let aiDeadUntil = 0;
+const AI_COOLDOWN = 15 * 60 * 1000;
+
+function fnv(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+
+function noteAiError(e) {
+  const msg = String((e && e.message) || e);
+  if (/4006|used up your daily|neurons/i.test(msg)) aiDeadUntil = Date.now() + AI_COOLDOWN;
+}
+
+async function flux2Image(env, model, { prompt, width, height, steps, refBytes }) {
   const mp = mhMultipart(
     { prompt, width: String(width), height: String(height), steps: String(steps) },
     refBytes ? { input_image_0: { name: "ref.jpg", type: "image/jpeg", bytes: refBytes } } : {}
   );
-  const out = await env.AI.run("@cf/black-forest-labs/flux-2-dev", {
+  const out = await env.AI.run(model, {
     multipart: { body: new Blob([mp.bytes]).stream(), contentType: mp.contentType },
   });
   const b64 = out && (out.image || (Array.isArray(out.images) ? out.images[0] : ""));
-  if (!b64) throw new Error("flux2 returned no image");
+  if (!b64) throw new Error("no image");
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-// ---- free fallback chain: public HF Spaces -> Pollinations -------------------
-async function hfOrPollinations(prompt, log) {
-  const deadline = Date.now() + 50000;
-  for (const space of SPACES) {
-    if (Date.now() > deadline) break;
-    try {
-      const out = await Promise.race([
-        hfImage(space, prompt),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("space timeout")), 40000)),
-      ]);
-      if (out) { if (log) log.push(space.id + ":ok"); return out; }
-    } catch (e) { if (log) log.push(space.id + ":" + String((e && e.message) || e).slice(0, 90)); }
-  }
+// Pollinations: free + keyless. Soft limit is 1 image / 45s per IP, so we
+// honour the retry-after the service tells us instead of failing.
+async function pollinations(prompt, w, h) {
   const seed = Math.floor(Math.random() * 1e9);
-  const poll = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1536&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
   try {
-    const r = await fetch(poll, { headers: { "User-Agent": UA, "Accept": "image/*" } });
+    const r = await fetch(url, { headers: { "User-Agent": UA, "Accept": "image/*" } });
     const type = r.headers.get("content-type") || "";
     if (r.ok && type.startsWith("image/")) {
-      return new Response(r.body, {
-        headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "pollinations", "Cache-Control": "public, max-age=86400" },
-      });
+      const b = new Uint8Array(await r.arrayBuffer());
+      if (b.length > 3000) return { bytes: b };
     }
-  } catch (e) { if (log) log.push("poll:" + String((e && e.message) || e).slice(0, 90)); }
-  if (log) log.push("poll:no-image");
-  return null;
+    if (r.status === 402 || r.status === 429) {
+      const txt = await r.text();
+      const m = /retry after (\d+)\s*s/i.exec(txt);
+      return { bytes: null, retryAfter: m ? parseInt(m[1], 10) : 45 };
+    }
+  } catch {}
+  return { bytes: null, retryAfter: 45 };
+}
+
+async function generateImageCore(env, { prompt, refBytes, w, h, steps }) {
+  let bytes = null;
+  let model = "";
+  const log = [];
+
+  if (env && env.AI && Date.now() > aiDeadUntil) {
+    if (refBytes) {
+      try {
+        bytes = await flux2Image(env, "@cf/black-forest-labs/flux-2-klein-4b", { prompt, width: w, height: h, steps, refBytes });
+        model = "flux-2-klein-4b";
+      } catch (e) { noteAiError(e); log.push("klein:" + String((e && e.message) || e).slice(0, 80)); }
+    }
+    if (!bytes) {
+      try {
+        const out = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt, steps: 6 });
+        if (out && out.image) {
+          const b = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
+          if (b.length > 3000) { bytes = b; model = "flux-1-schnell"; }
+        }
+      } catch (e) { noteAiError(e); log.push("schnell:" + String((e && e.message) || e).slice(0, 80)); }
+    }
+  }
+
+  let retryAfter = 0;
+  if (!bytes) {
+    const p = await pollinations(prompt, w, h);
+    if (p.bytes) { bytes = p.bytes; model = "pollinations"; }
+    else retryAfter = p.retryAfter || 45;
+  }
+
+  if (!bytes) return { res: null, log, retryAfter };
+
+  return {
+    res: new Response(bytes, {
+      headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": model, "Cache-Control": "public, max-age=86400" },
+    }),
+    log,
+    retryAfter: 0,
+  };
 }
 
 export default {
@@ -283,79 +334,19 @@ export default {
       const ref = String(body.ref || "");
       const w = Math.min(1920, Math.max(256, parseInt(body.width || "1024", 10) || 1024));
       const h = Math.min(1920, Math.max(256, parseInt(body.height || "1536", 10) || 1536));
-      let f2err = "";
+      const steps = Math.min(30, Math.max(4, parseInt(body.steps || "18", 10) || 18));
       const refBytes = ref ? Uint8Array.from(atob(ref.replace(/^data:[^;]+;base64,/, "")), (c) => c.charCodeAt(0)) : null;
-      if (env && env.AI) {
-        const steps = Math.min(30, Math.max(8, parseInt(body.steps || "18", 10) || 18));
-        try {
-          const bytes = await flux2Image(env, { prompt, width: w, height: h, steps, refBytes });
-          if (bytes.length > 3000) {
-            return new Response(bytes, {
-              headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "flux-2-dev", "Cache-Control": "public, max-age=3600" },
-            });
-          }
-        } catch (e) {
-          f2err = String((e && e.message) || e).slice(0, 300);
-          if (refBytes) {
-            try {
-              const bytes = await flux2Image(env, { prompt, width: w, height: h, steps, refBytes: null });
-              if (bytes.length > 3000) {
-                return new Response(bytes, {
-                  headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "flux-2-dev-noref", "Cache-Control": "public, max-age=3600" },
-                });
-              }
-            } catch (e2) { f2err += " | " + String((e2 && e2.message) || e2).slice(0, 160); }
-          }
-        }
-      }
-      // Fast fallback — FLUX.1-schnell (no reference support)
-      if (env && env.AI) {
-        try {
-          const out = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt, steps: 6 });
-          if (out && out.image) {
-            const bytes = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
-            if (bytes.length > 3000) {
-              return new Response(bytes, {
-                headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "flux-1-schnell", "X-Flux2-Error": f2err, "Cache-Control": "public, max-age=3600" },
-              });
-            }
-          }
-        } catch (e) { f2err += " | schnell: " + String((e && e.message) || e).slice(0, 160); }
-      }
-      const fbLog = [];
-      const fb = await hfOrPollinations(prompt, fbLog);
-      if (fb) return fb;
-      return json({ error: "image unavailable", detail: f2err, fallback: fbLog }, 502);
+      const out = await generateImageCore(env, { prompt, refBytes, w, h, steps });
+      if (out.res) return out.res;
+      return json({ error: "image unavailable", retryAfter: out.retryAfter, detail: out.log }, out.retryAfter ? 429 : 502);
     }
 
     if (url.pathname === "/api/image") {
       const prompt = String(url.searchParams.get("prompt") || "").slice(0, 1200);
       if (!prompt) return json({ error: "prompt required" }, 400);
-
-      // 0) Cloudflare Workers AI — free, runs inside Cloudflare, no key, very reliable.
-      //    FLUX.1-schnell gives the best prompt adherence; SDXL is the portrait fallback.
-      const wantTall = url.searchParams.get("shape") !== "square";
-      if (env && env.AI) {
-        try {
-          const model = url.searchParams.get("model") || "@cf/black-forest-labs/flux-1-schnell";
-          const out = model.includes("stability")
-            ? await env.AI.run(model, { prompt, num_steps: 30, guidance: 7.5, width: 1024, height: 1536 })
-            : await env.AI.run(model, { prompt, steps: 6 });
-          if (out && out.image) {
-            const bin = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
-            if (bin.length > 3000) {
-              return new Response(bin, {
-                headers: { ...CORS, "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
-              });
-            }
-          }
-        } catch {}
-      }
-
-      // 1+2) free fallback chain (HF Spaces -> Pollinations), run from Cloudflare.
-      const fb = await hfOrPollinations(prompt);
-      if (fb) return fb;
-      return json({ error: "image unavailable" }, 502);
+      const out = await generateImageCore(env, { prompt, refBytes: null, w: 1024, h: 1536, steps: 6 });
+      if (out.res) return out.res;
+      return json({ error: "image unavailable", retryAfter: out.retryAfter, detail: out.log }, out.retryAfter ? 429 : 502);
     }
 
     return json({ error: "not found", routes: ["/health", "/api/generate", "/api/image"] }, 404);

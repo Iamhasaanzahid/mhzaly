@@ -1144,8 +1144,12 @@ Rules:
         }, 1000);
 
         try {
-          // 0) Cloud backend (if configured) — keys stay server-side
-          if (AR_API_BASE) {
+          // 0) Cloud backend (if configured) — keys stay server-side.
+          //    Skip it for a while once its free AI quota is spent, so we go
+          //    straight to the free renderer instead of waiting on a 429.
+          let aiDead = 0;
+          try { aiDead = parseInt(localStorage.getItem("mhzaly_ai_dead") || "0", 10) || 0; } catch (e) {}
+          if (AR_API_BASE && Date.now() > aiDead) {
             try {
               showStatus("generating image", "cloud backend");
               const r = await withTimeout(
@@ -1171,6 +1175,9 @@ Rules:
                   showStatus("image ready", `${elapsed()}s`);
                   return { url: URL.createObjectURL(blob), blob, model };
                 }
+              } else if (r.status === 429 || r.status === 502) {
+                // Free daily AI quota is spent — remember it for 10 minutes.
+                try { localStorage.setItem("mhzaly_ai_dead", String(Date.now() + 10 * 60 * 1000)); } catch (e) {}
               }
             } catch (e) {}
           }
