@@ -223,13 +223,14 @@ async function pollinations(prompt, w, h) {
   return { bytes: null, retryAfter: 45 };
 }
 
-async function generateImageCore(env, { prompt, refBytes, w, h, steps }) {
+async function generateImageCore(env, { prompt, refBytes, w, h, steps, quality }) {
   let bytes = null;
   let model = "";
   const log = [];
 
+  const wantBest = String(quality || "fast") === "best";
   if (env && env.AI && Date.now() > aiDeadUntil) {
-    if (refBytes) {
+    if (refBytes && wantBest) {
       try {
         bytes = await flux2Image(env, "@cf/black-forest-labs/flux-2-klein-4b", { prompt, width: w, height: h, steps, refBytes });
         model = "flux-2-klein-4b";
@@ -336,7 +337,7 @@ export default {
       const h = Math.min(1920, Math.max(256, parseInt(body.height || "1536", 10) || 1536));
       const steps = Math.min(30, Math.max(4, parseInt(body.steps || "18", 10) || 18));
       const refBytes = ref ? Uint8Array.from(atob(ref.replace(/^data:[^;]+;base64,/, "")), (c) => c.charCodeAt(0)) : null;
-      const out = await generateImageCore(env, { prompt, refBytes, w, h, steps });
+      const out = await generateImageCore(env, { prompt, refBytes, w, h, steps, quality: body.quality });
       if (out.res) return out.res;
       return json({ error: "image unavailable", retryAfter: out.retryAfter, detail: out.log }, out.retryAfter ? 429 : 502);
     }

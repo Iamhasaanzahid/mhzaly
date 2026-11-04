@@ -144,7 +144,8 @@
                   </div>
                   <textarea id="ar-prompt" class="ar-prompt" rows="2" placeholder="Optional details — colour, fabric, room… e.g. “cream kurta, place on body”"></textarea>
                   <div class="ar-mode" id="ar-mode">
-                    <button type="button" class="ar-mode-btn is-on" data-mode="ai">AI model</button>
+                    <button type="button" class="ar-mode-btn is-on" data-mode="fast">⚡ Fast AI (10s)</button>
+                    <button type="button" class="ar-mode-btn" data-mode="best">✨ Best AI (design lock)</button>
                     <button type="button" class="ar-mode-btn" data-mode="exact">Same photo</button>
                     <span class="ar-mode-note" id="ar-mode-note">Naya model, naya background — same kapda</span>
                   </div>
@@ -432,6 +433,7 @@
       const AR_API_BASE = (window.AR_API_BASE || localStorage.getItem("mhzaly_backend") || "https://mhzaly-ai.mhzaly.workers.dev").replace(/\/+$/, "");
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
+      let lastRetryAfter = 0;
       const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
       const AGENT_SYSTEM = `You are a senior fashion art director and AR planner.
 The user uploads a photo and may pick an item or type a request.
@@ -524,12 +526,14 @@ Rules:
         if (be && arBackend) arBackend.value = be;
         refreshPoolStatus();
       })();
-      let genMode = localStorage.getItem("mhzaly_gen_mode") === "exact" ? "exact" : "ai";
+      const savedMode = localStorage.getItem("mhzaly_gen_mode");
+      let genMode = savedMode === "exact" ? "exact" : savedMode === "best" ? "best" : "fast";
       const arModeNote = document.getElementById("ar-mode-note");
       (function initMode() {
         const btns = document.querySelectorAll(".ar-mode-btn");
         const note = {
-          ai: "Naya model, naya background — same kapda",
+          fast: "⚡ Tez render — naya model, naya background, same kapda",
+          best: "✨ AI aapka asli kapra reference me leta hai — design locked",
           exact: "Aapki hi photo — design 100% same",
         };
         btns.forEach((b) => {
@@ -1162,10 +1166,11 @@ Rules:
                     ref: refB64 || "",
                     width: 1024,
                     height: 1536,
-                    steps: 18,
+                    steps: 14,
+                    quality: genMode === "best" ? "best" : "fast",
                   }),
                 }),
-                120000,
+                20000,
                 "backend"
               );
               if (r.ok) {
@@ -1182,25 +1187,38 @@ Rules:
             } catch (e) {}
           }
 
-          // 1) Free generator — Pollinations (1 image per ~35s, so wait + retry once)
+          // 1) Free generator — Pollinations. Hard free limit is 1 image / 45s
+          //    per IP, so a long wait is pointless: fail fast and tell the user.
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
-              showStatus("generating image", attempt === 0 ? "sana · free AI" : "sana · retry");
-              const res = await withTimeout(fetch(GEN_IMG(promptText, "sana"), { mode: "cors", cache: "no-store" }), 60000, "sana");
+              showStatus("generating image", attempt === 0 ? "free renderer" : "free renderer · retry");
+              const res = await withTimeout(fetch(GEN_IMG(promptText, "sana"), { mode: "cors", cache: "no-store" }), 30000, "sana");
               const type = res.headers.get("content-type") || "";
               if (res.ok && type.startsWith("image/")) {
                 const raw = await res.blob();
                 if (raw.size > 3000) {
                   const blob = await cleanPollinations(raw);
+                  lastRetryAfter = 0;
                   showStatus("image ready", `${elapsed()}s`);
                   return { url: URL.createObjectURL(blob), blob, model: "pollinations" };
                 }
               }
               if (res.status === 402 || res.status === 429) {
-                const wait = Math.min(45, parseInt(res.headers.get("retry-after") || "30", 10) || 30);
-                showStatus("queued", `free limit — waiting ${wait}s`);
-                await new Promise((r) => setTimeout(r, (wait + 1) * 1000));
-                continue;
+                let wait = parseInt(res.headers.get("retry-after") || "0", 10) || 0;
+                if (!wait) {
+                  try {
+                    const t = await res.text();
+                    const m = /retry after (\d+)\s*s/i.exec(t);
+                    if (m) wait = parseInt(m[1], 10);
+                  } catch (e) {}
+                }
+                lastRetryAfter = wait || 45;
+                if (wait && wait <= 12) {
+                  showStatus("queued", `free limit — waiting ${wait}s`);
+                  await new Promise((r) => setTimeout(r, (wait + 1) * 1000));
+                  continue;
+                }
+                return null;
               }
             } catch (e) {}
             break;
@@ -1392,6 +1410,7 @@ Rules:
           return;
         }
 
+        lastRetryAfter = 0;
         arGenerateBtn.disabled = true;
         arGenerateBtn.textContent = "AI is creating…";
         arResult.hidden = false;
@@ -1408,134 +1427,131 @@ Rules:
           const target = selectedOption && selectedOption !== "Auto"
             ? `Build a ${selectedOption.toLowerCase()} from this image`
             : "AI decides what to build from this image";
-          const extra = arPrompt.value.trim();
-          // The AI looks at the upload FIRST — everything downstream keeps this design.
-          const garment = selectedFile && genMode !== "exact" ? await describeGarment(selectedFile) : "";
-          if (garment) arResultDesc.textContent = `AI saw: ${garment}`;
-          const palette = selectedFile ? await paletteFrom(selectedFile) : [];
-          const colourHint = garment
-            ? `The garment in the photo is exactly: ${garment}. Keep this exact design, colour and pattern. `
-            : palette.length
-              ? `The photo's main clothing colours are ${palette.join(", ")} — use these exact colours. `
-              : "";
-          const prompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${colourHint}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
+          const extra = (arPrompt.value || "").trim();
+          const planPrompt = `${target}. ${hint ? `File hint: ${hint}. ` : ""}${extra ? `Extra details: ${extra}. ` : ""}Describe the item, its colour and material, and where it belongs (body, window, floor, wall or table).`;
           setStep(1);
 
-          let plan = null;
-          if (AR_API_BASE) {
-            try {
-              const image = await fileToBase64(selectedFile);
-              const res = await fetch(api("/api/generate"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type: "3d-model", prompt, image }),
-              });
-              if (!res.ok) throw new Error("backend " + res.status);
-              const job = await res.json();
-              plan = job.plan || { description: job.error || "" };
-              showStatus(job.status, job.error, job.plan);
-              if (job.jobId && (job.status === "queued" || job.status === "processing")) {
-                plan = await pollJob(job.jobId);
-              }
-            } catch (e) {
-              plan = null;
+          // ---- everything that can run in parallel starts now -------------
+          const visionP = selectedFile && genMode !== "exact"
+            ? describeGarment(selectedFile).catch(() => "")
+            : Promise.resolve("");
+          const paletteP = selectedFile ? paletteFrom(selectedFile).catch(() => []) : Promise.resolve([]);
+          const refP = (async () => {
+            if (!selectedFile || genMode === "exact") return "";
+            try { return await smallJpegB64(selectedFile, 512, 0.9); } catch (e) { return ""; }
+          })();
+          const planP = (async () => {
+            let p = null;
+            if (AR_API_BASE) {
+              try {
+                const image = await fileToBase64(selectedFile);
+                const res = await fetch(api("/api/generate"), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ type: "3d-model", prompt: planPrompt, image }),
+                });
+                if (!res.ok) throw new Error("backend " + res.status);
+                const job = await res.json();
+                p = job.plan || { description: job.error || "" };
+                showStatus(job.status, job.error, job.plan);
+                if (job.jobId && (job.status === "queued" || job.status === "processing")) p = await pollJob(job.jobId);
+              } catch (e) { p = null; }
             }
-          }
-          if (!plan) {
-            try {
-              plan = await Promise.race([
-                callProvider(prompt),
-                new Promise((_, rej) => setTimeout(() => rej(new Error("plan timeout")), 9000)),
-              ]);
-            } catch { plan = localPlan(); }
-          }
-          plan = cleanPlan(plan);
+            if (!p) {
+              try {
+                p = await Promise.race([
+                  callProvider(planPrompt),
+                  new Promise((_, rej) => setTimeout(() => rej(new Error("plan timeout")), 9000)),
+                ]);
+              } catch { p = localPlan(); }
+            }
+            return cleanPlan(p);
+          })();
 
-          setStep(2);
-          await new Promise((r) => setTimeout(r, 600));
-          arResultDesc.textContent = "Generating your 3D preview…";
-          const catText = `${plan.category || ""} ${selectedOption || ""}`.toLowerCase();
-          const isWearable = /(shirt|kurta|kurti|suit|dress|saree|shalwar|kameez|top|jacket|blazer|lehenga|sherwani|trouser|skirt|coat)/.test(catText);
+          const palette = await paletteP;
+          const optTxt = String(selectedOption || "Auto");
+          const explicit = optTxt.toLowerCase() !== "auto";
+          const NONWEAR = /(bag|shoe|sofa|curtain|table|vase|lamp|rug|pillow|towel)/i;
+          const isWearable = explicit ? !NONWEAR.test(optTxt) : true;
           const look = isWearable
             ? "full body fashion editorial photo, model wearing it, centered vertical portrait composition, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
             : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
           // If the user typed their own words, honour them literally — no rewriting.
-          const typed = (arPrompt.value || "").trim();
-          const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(typed);
+          const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(extra);
           const pal = palette.length && !hasColour ? ` Colour palette: ${palette.join(", ")}.` : "";
-          const imagePrompt = (() => {
-            const explicit = !!selectedOption && String(selectedOption).toLowerCase() !== "auto";
-            const subject = explicit
-              ? `a ${String(selectedOption).toLowerCase()}`
-              : `a fashion model wearing ${garment || plan.description || prompt}`;
-            return typed ? `${typed}, ${subject}, ${look}` : `${subject}${pal}, ${look}`;
-          })();
-          const geminiKey = (parseKeys().find((k) => k.provider === "gemini") || {}).key;
-          let gen = null;
-          if (geminiKey && selectedFile) {
-            try {
-              showStatus("try-on", "keeping your exact design");
-              gen = await geminiEdit(
-                selectedFile,
-                "Edit this photo. Keep the garment EXACTLY as it is — same colour, same fabric, same print or embroidery, same cut and design. Show it on a professional fashion model, full body, natural standing pose, plain light grey seamless studio backdrop, soft diffused studio lighting, photorealistic, sharp focus, high resolution. Do not redesign or recolour the garment.",
-                geminiKey
-              );
-            } catch (e) {
-              gen = null;
-            }
-          }
-          if (!gen && selectedFile && genMode === "exact") {
-            try {
-              showStatus("rendering", "same design, studio finish");
-              gen = await designLockedRender(selectedFile);
-            } catch (e) { gen = null; }
-          }
-          // AI style: always a brand-new render. The uploaded photo is never shown.
-          // FLUX.2 gets the actual garment as a reference so the design stays identical.
-          let refB64 = "";
-          if (selectedFile && genMode !== "exact") {
-            try { refB64 = await smallJpegB64(selectedFile, 512, 0.9); } catch (e) { refB64 = ""; }
-          }
+          const subject = explicit
+            ? `a ${optTxt.toLowerCase()}`
+            : "a fashion model wearing the garment from the photo";
+          const imagePrompt = extra ? `${extra}, ${subject}, ${look}` : `${subject}${pal}, ${look}`;
+
+          const refB64 = await refP;
           const refNote = refB64
             ? " Keep the exact same garment design, colour, print, embroidery and cut as the garment in the reference image."
             : "";
-          for (let attempt = 0; !gen && genMode !== "exact" && attempt < 2; attempt++) {
-            try {
-              if (attempt) showStatus("generating image", "AI retrying…");
-              gen = await generateImage(imagePrompt + refNote, refB64);
-            } catch (e) { gen = null; }
-          }
-          if (!gen && genMode === "exact" && selectedFile) {
-            try { gen = await designLockedRender(selectedFile); } catch (e) { gen = null; }
-          }
+
+          // ---- the image starts now; text work finishes alongside it ------
+          setStep(2);
+          arResultDesc.textContent = "Generating your 3D preview…";
+          const genP = (async () => {
+            const geminiKey = (parseKeys().find((k) => k.provider === "gemini") || {}).key;
+            if (geminiKey && selectedFile) {
+              try {
+                showStatus("try-on", "keeping your exact design");
+                const g = await geminiEdit(
+                  selectedFile,
+                  "Edit this photo. Keep the garment EXACTLY as it is — same colour, same fabric, same print or embroidery, same cut and design. Show it on a professional fashion model, full body, natural standing pose, plain light grey seamless studio backdrop, soft diffused studio lighting, photorealistic, sharp focus, high resolution. Do not redesign or recolour the garment.",
+                  geminiKey
+                );
+                if (g) return g;
+              } catch (e) {}
+            }
+            if (selectedFile && genMode === "exact") {
+              try {
+                showStatus("rendering", "same design, studio finish");
+                const g = await designLockedRender(selectedFile);
+                if (g) return g;
+              } catch (e) {}
+            }
+            let g = null;
+            for (let attempt = 0; !g && genMode !== "exact" && attempt < 2; attempt++) {
+              try {
+                if (attempt) showStatus("generating image", "AI retrying…");
+                g = await generateImage(imagePrompt + refNote, refB64);
+              } catch (e) { g = null; }
+            }
+            return g;
+          })();
+
+          let gen = await genP;
+
           if (!gen) {
             // Never show the user's own photo as the "result".
             arResultImg.removeAttribute("src");
             arResultImg.classList.add("is-empty");
-            arResultDesc.textContent = "AI is busy right now — press Generate with AI once more.";
+            arResultDesc.textContent = lastRetryAfter
+              ? `Free limit reached — ${lastRetryAfter}s baad dobara try karein.`
+              : "AI is busy right now — press Generate with AI once more.";
             arDownload.hidden = true;
             arCompare.hidden = true;
             setStep(1);
-            showStatus("failed", "AI busy — try again");
+            showStatus("failed", lastRetryAfter ? `free limit — ${lastRetryAfter}s` : "AI busy — try again");
             return;
           }
-          if (gen) {
-            arResultImg.src = gen.url;
-            arResultImg.classList.remove("is-empty");
-            arResultDesc.textContent = garment ? `Same design: ${garment}` : (plan.description || "3D AR asset ready.");
-            arDownload.href = gen.url;
-            arDownload.hidden = false;
-            arCompare.hidden = !arPreview.src;
-            arCompare.dataset.gen = gen.url;
-            arCompare.dataset.orig = arPreview.src || "";
-            arCompare.textContent = "⇄ See original";
-            arCompare.dataset.mode = "ai";
-            if (window.__init3D) window.__init3D(gen.url);
-          } else {
-            arResultImg.removeAttribute("src");
-            arResultImg.classList.add("is-empty");
-            arResultDesc.textContent = (plan.description || "3D AR asset ready.") + " (preview limited — try again in a minute)";
-          }
+
+          arResultImg.src = gen.url;
+          arResultImg.classList.remove("is-empty");
+          arDownload.href = gen.url;
+          arDownload.hidden = false;
+          arCompare.hidden = !arPreview.src;
+          arCompare.dataset.gen = gen.url;
+          arCompare.dataset.orig = arPreview.src || "";
+          arCompare.textContent = "⇄ See original";
+          arCompare.dataset.mode = "ai";
+          if (window.__init3D) window.__init3D(gen.url);
+
+          // ---- now collect the slower text work ---------------------------
+          const [garment, plan] = await Promise.all([visionP, planP]);
+          arResultDesc.textContent = garment ? `Same design: ${garment}` : (plan.description || "3D AR asset ready.");
           const modelLabel = /flux-2/.test(gen.model || "") ? "FLUX.2 · reference"
             : /flux-1/.test(gen.model || "") ? "FLUX.1 · fast"
             : /pollinations/.test(gen.model || "") ? "free renderer"
