@@ -326,3 +326,106 @@ body{overflow-x:hidden}
   box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
 }
 .ar-mode-note { font-size: 11.5px; color: rgba(196, 181, 253, 0.7); }
+
+/* ============================================================
+   Paper theme — mirrors the main page (The Cloth Room)
+   Fraunces + DM Sans · paper/ink/rust · sharp 2–3px corners
+   ============================================================ */
+html{color-scheme:light}
+html,body{background:linear-gradient(180deg,#f5efe5 0%,#f3ede2 48%,#efe7da 100%)}
+::selection{background:rgba(169,78,49,.18);color:#211e19}
+
+.ar{
+  --ar-bg:#f5f0e8;
+  --ar-bg-2:#efe7da;
+  --ar-panel:#fbf6ec;
+  --ar-line:#d8cbbb;
+  --ar-line-strong:#b8a68d;
+  --ar-ink:#211e19;
+  --ar-soft:#4f473c;
+  --ar-muted:#786d5d;
+  --ar-accent:#a94e31;
+  --ar-accent-2:#b4864a;
+  --ar-accent-3:#5d7a4e;
+  --ar-accent-ink:#fffaf1;
+  --ar-grad:linear-gradient(100deg,#a94e31 0%,#b4864a 100%);
+  --ar-serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --ar-sans:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --shadow:0 18px 44px rgba(58,42,25,.08);
+  --shadow-deep:0 26px 70px rgba(58,42,25,.14);
+  background:linear-gradient(180deg,#f5efe5 0%,#f3ede2 48%,#efe7da 100%);
+}
+.ar h1,.ar h2,.ar h3{letter-spacing:-.03em}
+
+/* header */
+.ar-header{background:rgba(251,246,236,.9);border-bottom:1px solid var(--ar-line)}
+.ar-header::after{background:var(--ar-grad);opacity:.3}
+.ar-logo{color:var(--ar-ink)}
+.ar-logo-mark{border:1px solid var(--ar-ink);border-radius:1px;background:var(--ar-panel);color:var(--ar-accent);transform:rotate(-3deg)}
+.ar-nav a{color:var(--ar-soft)}
+.ar-nav a:hover{color:var(--ar-ink)}
+.ar-login{color:var(--ar-soft)}
+
+/* buttons */
+.ar-btn{border-radius:2px;background:var(--ar-ink);background-size:auto;color:var(--ar-panel);font-weight:600;font-size:.8rem;letter-spacing:.01em;box-shadow:3px 3px 0 rgba(169,78,49,.18)}
+.ar-btn:hover{transform:translate(-1px,-1px);background-position:0 0;box-shadow:4px 4px 0 rgba(169,78,49,.22)}
+.ar-btn-ghost{border:1px solid var(--ar-line-strong);background:transparent;color:var(--ar-ink);box-shadow:none}
+.ar-btn-ghost:hover{border-color:var(--ar-ink);background:var(--ar-panel);box-shadow:none;transform:none}
+.ar-btn-lg{font-size:.86rem}
+
+/* hero */
+.ar-hero{background:
+  radial-gradient(60% 75% at 80% -10%, rgba(169,78,49,.10), transparent 65%),
+  radial-gradient(45% 60% at 5% 110%, rgba(180,134,74,.10), transparent 65%),
+  transparent}
+.ar-hero::before{background:radial-gradient(28% 38% at 22% 18%, rgba(180,134,74,.07), transparent 70%)}
+
+/* surfaces */
+.ar-card,.ar-type,.ar-why-item,.ar-step,.ar-app,.ar-plan,.ar-result-card{background:var(--ar-panel);border-color:var(--ar-line);box-shadow:var(--shadow)}
+.ar-card:hover,.ar-type:hover,.ar-why-item:hover,.ar-step:hover,.ar-app:hover,.ar-plan:hover{border-color:var(--ar-line-strong);box-shadow:var(--shadow-deep)}
+.ar-card-media,.ar-gen-card .media,.ar-result-media,.ar-phone .screen{background:#e8dfce}
+.ar-card-tag{background:rgba(251,246,236,.9);border-color:var(--ar-line);color:var(--ar-ink)}
+.ar-type .icon{border-color:var(--ar-line);background:var(--ar-panel);color:var(--ar-accent)}
+.ar-step .step-no{color:rgba(169,78,49,.35)}
+.ar-app .tag{border-color:var(--ar-line);background:var(--ar-panel);color:var(--ar-accent)}
+.ar-plan .plan-badge{background:var(--ar-ink);color:var(--ar-panel);box-shadow:none}
+.ar-hero-meta span{border-color:var(--ar-line);background:var(--ar-panel);color:var(--ar-soft)}
+.ar-hero-meta span:hover{border-color:var(--ar-line-strong)}
+.ar-phone{border-color:#e0d6c6;background:#efe7da;box-shadow:var(--shadow-deep)}
+
+/* upload + prompt */
+.ar-drop:hover{border-color:var(--ar-accent)}
+.ar-drop.is-drag{background:rgba(169,78,49,.06)}
+.ar-drop-icon{background:var(--ar-panel);border-color:var(--ar-line);color:var(--ar-accent)}
+.ar-drop.has-image::after{background:rgba(251,246,236,.92);border-color:var(--ar-line);color:var(--ar-ink)}
+.ar-chip{border-color:var(--ar-line);color:var(--ar-soft)}
+.ar-chip:hover{border-color:var(--ar-accent);color:var(--ar-ink)}
+.ar-chip.is-on{background:var(--ar-ink);color:var(--ar-panel);font-weight:600;box-shadow:none}
+.ar-prompt:focus{border-color:var(--ar-accent);box-shadow:0 0 0 3px rgba(169,78,49,.12)}
+.ar-ai-body select:focus,.ar-ai-body input:focus,.ar-ai-body textarea:focus{border-color:var(--ar-accent)}
+.ar-result-meta span{background:var(--ar-panel);border-color:var(--ar-line);color:var(--ar-soft)}
+.ar-steps span.active{background:var(--ar-ink);color:var(--ar-panel)}
+
+/* quick try-on strip */
+.ar-tryon{border:1px solid var(--ar-line);border-radius:3px;background:var(--ar-panel)}
+.ar-tryon-head strong{color:var(--ar-ink)}
+.ar-tryon-head a{color:var(--ar-accent)}
+.ar-tryon-head a:hover{color:var(--ar-accent);text-decoration:underline}
+.ar-tryon-row input{border-radius:2px;border:1px solid var(--ar-line);background:var(--paper-white,#fffaf1);color:var(--ar-ink)}
+.ar-tryon-row input::placeholder{color:var(--ar-muted)}
+.ar-tryon-note{color:var(--ar-muted)}
+
+/* mode switch */
+.ar-mode-btn{border-radius:2px;border:1px solid var(--ar-line);background:var(--ar-panel);color:var(--ar-muted);font-weight:600}
+.ar-mode-btn:hover{border-color:var(--ar-line-strong);color:var(--ar-ink)}
+.ar-mode-btn.is-on{background:var(--ar-ink);border-color:var(--ar-ink);color:var(--ar-panel);box-shadow:none}
+.ar-mode-note{color:var(--ar-muted)}
+
+/* anchors must not inherit over button text */
+.ar a.ar-btn{color:var(--ar-panel)}
+.ar a.ar-btn-ghost{color:var(--ar-ink)}
+.ar a.ar-btn-ghost:hover{color:var(--ar-ink)}
+.ar .ar-nav a{color:var(--ar-soft)}
+.ar .ar-nav a:hover{color:var(--ar-ink)}
+.ar a.ar-logo{color:var(--ar-ink)}
+.ar .ar-tryon-head a{color:var(--ar-accent)}
