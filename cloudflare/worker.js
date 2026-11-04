@@ -14,6 +14,8 @@
  *      and paste it into the site: AI settings → Backend URL
  */
 
+const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
@@ -128,13 +130,13 @@ async function hfImage(space, prompt) {
   const call = `${space.base}/gradio_api/call${space.ep}`;
   const res = await fetch(call, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "User-Agent": UA, "Accept": "application/json" },
     body: JSON.stringify({ data: space.args(prompt, seed) }),
   });
-  if (!res.ok) throw new Error(space.id + " " + res.status);
+  if (!res.ok) throw new Error(space.id + " http " + res.status + " " + (await res.text()).slice(0, 100));
   const { event_id } = await res.json();
   if (!event_id) throw new Error("no event");
-  const sse = await fetch(`${call}/${event_id}`);
+  const sse = await fetch(`${call}/${event_id}`, { headers: { "User-Agent": UA, "Accept": "text/event-stream" } });
   const text = await sse.text();
   let payload = null;
   for (const line of text.split("\n")) {
@@ -143,9 +145,72 @@ async function hfImage(space, prompt) {
   }
   const file = payload && payload.find((x) => x && x.url);
   if (!file) throw new Error("no file");
-  const img = await fetch(file.url);
+  const img = await fetch(file.url, { headers: { "User-Agent": UA } });
   if (!img.ok) throw new Error("file " + img.status);
   return new Response(img.body, { headers: { ...CORS, "Content-Type": "image/webp", "Cache-Control": "public, max-age=86400" } });
+}
+
+// ---- FLUX.2 [dev] multipart helper ------------------------------------------
+// The AI binding only accepts multipart via a raw stream + explicit boundary.
+function mhMultipart(fields, files) {
+  const enc = new TextEncoder();
+  const boundary = "----mhzaly" + Math.random().toString(16).slice(2);
+  const parts = [];
+  for (const [k, v] of Object.entries(fields)) {
+    parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  }
+  for (const [k, f] of Object.entries(files || {})) {
+    parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"; filename="${f.name}"\r\nContent-Type: ${f.type}\r\n\r\n`));
+    parts.push(f.bytes);
+    parts.push(enc.encode("\r\n"));
+  }
+  parts.push(enc.encode(`--${boundary}--\r\n`));
+  const total = parts.reduce((a, q) => a + q.length, 0);
+  const bytes = new Uint8Array(total);
+  let off = 0;
+  for (const q of parts) { bytes.set(q, off); off += q.length; }
+  return { bytes, contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+async function flux2Image(env, { prompt, width, height, steps, refBytes }) {
+  const mp = mhMultipart(
+    { prompt, width: String(width), height: String(height), steps: String(steps) },
+    refBytes ? { input_image_0: { name: "ref.jpg", type: "image/jpeg", bytes: refBytes } } : {}
+  );
+  const out = await env.AI.run("@cf/black-forest-labs/flux-2-dev", {
+    multipart: { body: new Blob([mp.bytes]).stream(), contentType: mp.contentType },
+  });
+  const b64 = out && (out.image || (Array.isArray(out.images) ? out.images[0] : ""));
+  if (!b64) throw new Error("flux2 returned no image");
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+// ---- free fallback chain: public HF Spaces -> Pollinations -------------------
+async function hfOrPollinations(prompt, log) {
+  const deadline = Date.now() + 50000;
+  for (const space of SPACES) {
+    if (Date.now() > deadline) break;
+    try {
+      const out = await Promise.race([
+        hfImage(space, prompt),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("space timeout")), 40000)),
+      ]);
+      if (out) { if (log) log.push(space.id + ":ok"); return out; }
+    } catch (e) { if (log) log.push(space.id + ":" + String((e && e.message) || e).slice(0, 90)); }
+  }
+  const seed = Math.floor(Math.random() * 1e9);
+  const poll = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1536&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
+  try {
+    const r = await fetch(poll, { headers: { "User-Agent": UA, "Accept": "image/*" } });
+    const type = r.headers.get("content-type") || "";
+    if (r.ok && type.startsWith("image/")) {
+      return new Response(r.body, {
+        headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "pollinations", "Cache-Control": "public, max-age=86400" },
+      });
+    }
+  } catch (e) { if (log) log.push("poll:" + String((e && e.message) || e).slice(0, 90)); }
+  if (log) log.push("poll:no-image");
+  return null;
 }
 
 export default {
@@ -209,6 +274,60 @@ export default {
       return json({ ok: false, error: "vision failed" }, 502);
     }
 
+    // FLUX.2 [dev] — best quality + optional reference image (true "same design" try-on).
+    if (url.pathname === "/api/image" && request.method === "POST") {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const prompt = String(body.prompt || "").slice(0, 1500);
+      if (!prompt) return json({ error: "prompt required" }, 400);
+      const ref = String(body.ref || "");
+      const w = Math.min(1920, Math.max(256, parseInt(body.width || "1024", 10) || 1024));
+      const h = Math.min(1920, Math.max(256, parseInt(body.height || "1536", 10) || 1536));
+      let f2err = "";
+      const refBytes = ref ? Uint8Array.from(atob(ref.replace(/^data:[^;]+;base64,/, "")), (c) => c.charCodeAt(0)) : null;
+      if (env && env.AI) {
+        const steps = Math.min(30, Math.max(8, parseInt(body.steps || "18", 10) || 18));
+        try {
+          const bytes = await flux2Image(env, { prompt, width: w, height: h, steps, refBytes });
+          if (bytes.length > 3000) {
+            return new Response(bytes, {
+              headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "flux-2-dev", "Cache-Control": "public, max-age=3600" },
+            });
+          }
+        } catch (e) {
+          f2err = String((e && e.message) || e).slice(0, 300);
+          if (refBytes) {
+            try {
+              const bytes = await flux2Image(env, { prompt, width: w, height: h, steps, refBytes: null });
+              if (bytes.length > 3000) {
+                return new Response(bytes, {
+                  headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "flux-2-dev-noref", "Cache-Control": "public, max-age=3600" },
+                });
+              }
+            } catch (e2) { f2err += " | " + String((e2 && e2.message) || e2).slice(0, 160); }
+          }
+        }
+      }
+      // Fast fallback — FLUX.1-schnell (no reference support)
+      if (env && env.AI) {
+        try {
+          const out = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt, steps: 6 });
+          if (out && out.image) {
+            const bytes = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
+            if (bytes.length > 3000) {
+              return new Response(bytes, {
+                headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": "flux-1-schnell", "X-Flux2-Error": f2err, "Cache-Control": "public, max-age=3600" },
+              });
+            }
+          }
+        } catch (e) { f2err += " | schnell: " + String((e && e.message) || e).slice(0, 160); }
+      }
+      const fbLog = [];
+      const fb = await hfOrPollinations(prompt, fbLog);
+      if (fb) return fb;
+      return json({ error: "image unavailable", detail: f2err, fallback: fbLog }, 502);
+    }
+
     if (url.pathname === "/api/image") {
       const prompt = String(url.searchParams.get("prompt") || "").slice(0, 1200);
       if (!prompt) return json({ error: "prompt required" }, 400);
@@ -233,32 +352,9 @@ export default {
         } catch {}
       }
 
-      // 1) FLUX / SD3.5 on public HF Spaces — best prompt adherence at 1024x1536.
-      //    Runs from Cloudflare's network, so the visitor's ISP never matters.
-      //    Two rounds: HF Spaces sometimes sleep and need a wake-up call.
-      const deadline = Date.now() + 50000;
-      for (const space of SPACES) {
-        if (Date.now() > deadline) break;
-        try {
-          const out = await Promise.race([
-            hfImage(space, prompt),
-            new Promise((_, rej) => setTimeout(() => rej(new Error("space timeout")), 40000)),
-          ]);
-          if (out) return out;
-        } catch {}
-      }
-      // 2) Pollinations fallback (free tier: 1 image per ~35s).
-      const seed = Math.floor(Math.random() * 1e9);
-      const poll = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1536&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
-      try {
-        const r = await fetch(poll);
-        const type = r.headers.get("content-type") || "";
-        if (r.ok && type.startsWith("image/")) {
-          return new Response(r.body, {
-            headers: { ...CORS, "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
-          });
-        }
-      } catch {}
+      // 1+2) free fallback chain (HF Spaces -> Pollinations), run from Cloudflare.
+      const fb = await hfOrPollinations(prompt);
+      if (fb) return fb;
       return json({ error: "image unavailable" }, 502);
     }
 

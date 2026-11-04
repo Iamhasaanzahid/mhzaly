@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#f5f0e8" />
     <link rel="canonical" href="https://mhzaly.surge.sh/mhzaly-ar.html" />
     <link rel="stylesheet" href="fonts.css?v=1" />
-    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104b" />
+    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104c" />
     <script type="importmap">
       {
         "imports": {
@@ -197,6 +197,7 @@
                   <div class="foot">
                     <a class="ar-btn" href="index.html#fabric-ai">Open in 3D Studio</a>
                     <a class="ar-btn ar-btn-ghost" id="ar-download" href="#" download="mhzaly-ar-asset.jpg" hidden>⬇ Save image</a>
+                    <button class="ar-btn ar-btn-ghost" id="ar-compare" type="button" hidden>⇄ See original</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-glb" type="button" hidden>⬇ Download 3D (GLB)</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-again-btn" type="button">Generate another</button>
                   </div>
@@ -577,6 +578,7 @@ Rules:
         }
       });
       const arResultMeta = document.getElementById("ar-result-meta");
+      const arCompare = document.getElementById("ar-compare");
       const arDownload = document.getElementById("ar-download");
 
       let selectedOption = "Auto";
@@ -1134,7 +1136,7 @@ Rules:
         ]);
 
       // Image chain: high-quality free FLUX spaces first, then fast Pollinations fallback.
-      async function generateImage(promptText) {
+      async function generateImage(promptText, refB64) {
         const started = Date.now();
         const elapsed = () => Math.round((Date.now() - started) / 1000);
         const timer = setInterval(() => {
@@ -1147,36 +1149,33 @@ Rules:
             try {
               showStatus("generating image", "cloud backend");
               const r = await withTimeout(
-                fetch(`${AR_API_BASE}/api/image?prompt=${encodeURIComponent(promptText)}`, { mode: "cors" }),
-                90000,
+                fetch(`${AR_API_BASE}/api/image`, {
+                  method: "POST",
+                  mode: "cors",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    prompt: promptText,
+                    ref: refB64 || "",
+                    width: 1024,
+                    height: 1536,
+                    steps: 18,
+                  }),
+                }),
+                120000,
                 "backend"
               );
               if (r.ok) {
                 const blob = await r.blob();
                 if (blob.size > 3000) {
+                  const model = r.headers.get("X-Model") || "";
                   showStatus("image ready", `${elapsed()}s`);
-                  return { url: URL.createObjectURL(blob), blob };
+                  return { url: URL.createObjectURL(blob), blob, model };
                 }
               }
             } catch (e) {}
           }
 
-          // 1) Quality pass — free HF Spaces (FLUX / SD3.5) at 1024x1536
-          const deadline = Date.now() + 55000;
-          for (const space of HF_SPACES) {
-            if (Date.now() > deadline) break;
-            if (isCooling(space.id, "space0000")) continue;
-            try {
-              showStatus("generating image", `${space.id} · high quality`);
-              const out = await withTimeout(hfSpaceImage(space, promptText), Math.max(20000, deadline - Date.now()), space.id);
-              showStatus("image ready", `${elapsed()}s`);
-              return out;
-            } catch (e) {
-              coolDown(space.id, "space0000", 10 * 60 * 1000);
-            }
-          }
-
-          // 2) Free generator — Pollinations (1 image per ~35s, so wait + retry once)
+          // 1) Free generator — Pollinations (1 image per ~35s, so wait + retry once)
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
               showStatus("generating image", attempt === 0 ? "sana · free AI" : "sana · retry");
@@ -1187,7 +1186,7 @@ Rules:
                 if (raw.size > 3000) {
                   const blob = await cleanPollinations(raw);
                   showStatus("image ready", `${elapsed()}s`);
-                  return { url: URL.createObjectURL(blob), blob };
+                  return { url: URL.createObjectURL(blob), blob, model: "pollinations" };
                 }
               }
               if (res.status === 402 || res.status === 429) {
@@ -1304,14 +1303,17 @@ Rules:
       }
 
       // Always works: local plan when the free provider is down or rate-limited.
+      const WEARABLE_RE = /(shirt|kurta|kurti|suit|dress|saree|shalwar|kameez|top|jacket|blazer|lehenga|sherwani|trouser|skirt|coat|tunic)/;
       function cleanPlan(p) {
-        const cat = String(p.category || "").toLowerCase();
-        if (!cat || cat.includes("|")) {
-          p.category = selectedOption !== "Auto" ? selectedOption.toLowerCase() : "3d asset";
-        }
-        const pl = String(p.placement || "").toLowerCase();
-        if (!pl || pl.includes("|")) {
-          p.placement = /kurta|shirt|suit|dress|saree|shalwar|tunic/.test(p.category) ? "body" : "floor";
+        if (selectedOption && selectedOption !== "Auto") {
+          // The chip the user picked is the truth — never let the model drift.
+          p.category = selectedOption.toLowerCase();
+          p.placement = WEARABLE_RE.test(p.category) ? "body" : "table";
+        } else {
+          const cat = String(p.category || "").toLowerCase();
+          if (!cat || cat.includes("|")) p.category = "3d asset";
+          const pl = String(p.placement || "").toLowerCase();
+          if (!pl || pl.includes("|")) p.placement = WEARABLE_RE.test(p.category) ? "body" : "floor";
         }
         return p;
       }
@@ -1387,6 +1389,9 @@ Rules:
         arGenerateBtn.textContent = "AI is creating…";
         arResult.hidden = false;
         arResultImg.src = arPreview.src;
+        arResultImg.classList.remove("is-empty");
+        document.querySelector(".ar-result-media").classList.add("is-loading");
+        if (arCompare) arCompare.hidden = true;
         arResultDesc.textContent = "Reading your image and planning the 3D asset…";
         setStep(0);
         showStatus("processing");
@@ -1479,37 +1484,59 @@ Rules:
             } catch (e) { gen = null; }
           }
           // AI style: always a brand-new render. The uploaded photo is never shown.
+          // FLUX.2 gets the actual garment as a reference so the design stays identical.
+          let refB64 = "";
+          if (selectedFile && genMode !== "exact") {
+            try { refB64 = await smallJpegB64(selectedFile, 512, 0.9); } catch (e) { refB64 = ""; }
+          }
+          const refNote = refB64
+            ? " Keep the exact same garment design, colour, print, embroidery and cut as the garment in the reference image."
+            : "";
           for (let attempt = 0; !gen && genMode !== "exact" && attempt < 2; attempt++) {
             try {
               if (attempt) showStatus("generating image", "AI retrying…");
-              gen = await generateImage(imagePrompt);
+              gen = await generateImage(imagePrompt + refNote, refB64);
             } catch (e) { gen = null; }
           }
           if (!gen && genMode === "exact" && selectedFile) {
             try { gen = await designLockedRender(selectedFile); } catch (e) { gen = null; }
           }
           if (!gen) {
-            arResultImg.src = arPreview.src;
+            // Never show the user's own photo as the "result".
+            arResultImg.removeAttribute("src");
+            arResultImg.classList.add("is-empty");
             arResultDesc.textContent = "AI is busy right now — press Generate with AI once more.";
             arDownload.hidden = true;
+            arCompare.hidden = true;
             setStep(1);
             showStatus("failed", "AI busy — try again");
             return;
           }
           if (gen) {
             arResultImg.src = gen.url;
+            arResultImg.classList.remove("is-empty");
             arResultDesc.textContent = garment ? `Same design: ${garment}` : (plan.description || "3D AR asset ready.");
             arDownload.href = gen.url;
             arDownload.hidden = false;
+            arCompare.hidden = !arPreview.src;
+            arCompare.dataset.gen = gen.url;
+            arCompare.dataset.orig = arPreview.src || "";
+            arCompare.textContent = "⇄ See original";
+            arCompare.dataset.mode = "ai";
             if (window.__init3D) window.__init3D(gen.url);
           } else {
-            arResultImg.src = arPreview.src;
+            arResultImg.removeAttribute("src");
+            arResultImg.classList.add("is-empty");
             arResultDesc.textContent = (plan.description || "3D AR asset ready.") + " (preview limited — try again in a minute)";
           }
+          const modelLabel = /flux-2/.test(gen.model || "") ? "FLUX.2 · reference"
+            : /flux-1/.test(gen.model || "") ? "FLUX.1 · fast"
+            : /pollinations/.test(gen.model || "") ? "free renderer"
+            : "";
           const metaBits = [
             plan.category || (selectedOption !== "Auto" ? selectedOption : ""),
             plan.placement ? `on ${plan.placement}` : "",
-            plan.style || "photoreal",
+            modelLabel || plan.style || "photoreal",
           ].filter(Boolean);
           arResultMeta.hidden = metaBits.length === 0;
           arResultMeta.innerHTML = metaBits.map((x) => `<span>${x}</span>`).join("");
@@ -1521,8 +1548,20 @@ Rules:
         } finally {
           arGenerateBtn.disabled = false;
           arGenerateBtn.textContent = "Generate with AI";
+          const media = document.querySelector(".ar-result-media");
+          if (media) media.classList.remove("is-loading");
         }
       });
+
+      // Before / after toggle — lets people compare the upload with the AI render.
+      if (arCompare) {
+        arCompare.addEventListener("click", () => {
+          const showOriginal = arCompare.dataset.mode === "ai";
+          arResultImg.src = showOriginal ? arCompare.dataset.orig : arCompare.dataset.gen;
+          arCompare.dataset.mode = showOriginal ? "orig" : "ai";
+          arCompare.textContent = showOriginal ? "⇄ See AI result" : "⇄ See original";
+        });
+      }
     </script>
 
     <script type="module">

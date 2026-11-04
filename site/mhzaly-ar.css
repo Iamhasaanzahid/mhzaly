@@ -429,3 +429,9 @@ html,body{background:linear-gradient(180deg,#f5efe5 0%,#f3ede2 48%,#efe7da 100%)
 .ar .ar-nav a:hover{color:var(--ar-ink)}
 .ar a.ar-logo{color:var(--ar-ink)}
 .ar .ar-tryon-head a{color:var(--ar-accent)}
+
+/* result media — loading shimmer + empty state */
+.ar-result-media{position:relative}
+.ar-result-media.is-loading::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;background:linear-gradient(100deg,transparent 20%,rgba(169,78,49,.10) 50%,transparent 80%);background-size:200% 100%;animation:ar-shimmer 1.4s linear infinite}
+@keyframes ar-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+#ar-result-img.is-empty{opacity:0}

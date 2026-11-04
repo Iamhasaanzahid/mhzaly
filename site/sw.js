@@ -1,6 +1,6 @@
 /* MHZALY service worker — instant loads + offline resilience.
    Only same-origin assets are cached; AI APIs are never intercepted. */
-const CACHE = "mhzaly-v4";
+const CACHE = "mhzaly-v5";
 const CORE = [
   "/",
   "/index.html",
