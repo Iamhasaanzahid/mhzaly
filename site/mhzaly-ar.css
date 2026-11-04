@@ -454,3 +454,5 @@ html,body{background:linear-gradient(180deg,#f5efe5 0%,#f3ede2 48%,#efe7da 100%)
 .ar-lightbox img{max-width:92vw;max-height:88vh;border:1px solid rgba(251,246,236,.4);box-shadow:0 30px 90px rgba(0,0,0,.55)}
 .ar-lightbox-close{position:absolute;top:18px;right:20px;width:40px;height:40px;border-radius:2px;border:1px solid rgba(251,246,236,.5);background:transparent;color:#fbf6ec;font-size:1rem;cursor:pointer}
 .ar-lightbox-close:hover{background:rgba(251,246,236,.12)}
+
+.ar-lightbox[hidden]{display:none}
