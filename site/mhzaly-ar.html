@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#f5f0e8" />
     <link rel="canonical" href="https://mhzaly.pages.dev/mhzaly-ar.html" />
     <link rel="stylesheet" href="fonts.css?v=1" />
-    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104g" />
+    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104k" />
     <script type="importmap">
       {
         "imports": {
@@ -776,8 +776,12 @@ Rules:
         if (l < 0.12) return "black";
         if (l > 0.9) return "white";
         if (s < 0.14) return l < 0.45 ? "charcoal grey" : "light grey";
-        if (h < 15 || h >= 345) return l < 0.4 ? "deep red" : "red";
-        if (h < 45) return l < 0.45 ? "rust orange" : "orange";
+        if (h < 15 || h >= 345) {
+          // Low-saturation dark oranges are brown leather, not red.
+          if (s < 0.55 && l < 0.55) return l < 0.28 ? "dark brown" : "brown";
+          return l < 0.4 ? "deep red" : "red";
+        }
+        if (h < 45) return l < 0.3 ? "dark brown" : l < 0.5 ? "brown" : l < 0.72 ? "rust orange" : "orange";
         if (h < 70) return l < 0.4 ? "mustard yellow" : "yellow";
         if (h < 160) return l < 0.35 ? "forest green" : "green";
         if (h < 200) return "teal";
@@ -793,15 +797,23 @@ Rules:
           const c = document.createElement("canvas");
           c.width = 48; c.height = 48;
           const ctx = c.getContext("2d", { willReadFrequently: true });
-          ctx.drawImage(img, 0, 0, 48, 48);
+          // Sample the middle of the photo — the product/garment lives there,
+          // not the studio backdrop around the edges.
+          const nw = img.naturalWidth || img.width || 48;
+          const nh = img.naturalHeight || img.height || 48;
+          const sw = Math.max(1, nw * 0.66), sh = Math.max(1, nh * 0.66);
+          ctx.drawImage(img, (nw - sw) / 2, (nh - sh) / 2, sw, sh, 0, 0, 48, 48);
           const d = ctx.getImageData(0, 0, 48, 48).data;
           const buckets = new Map();
+          let neutralR = 0, neutralG = 0, neutralB = 0, neutralN = 0;
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
             if (a < 200) continue;
             const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
             const sat = mx === 0 ? 0 : (mx - mn) / mx;
-            if (sat < 0.2 && (mx > 205 || mx < 40)) continue;
+            neutralR += r; neutralG += g; neutralB += b; neutralN++;
+            // Neutral pixels are almost always backdrop — skip them.
+            if (sat < 0.17) continue;
             const k = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
             const e = buckets.get(k) || { r: 0, g: 0, b: 0, n: 0 };
             e.r += r; e.g += g; e.b += b; e.n++;
@@ -815,7 +827,15 @@ Rules:
             if (picked.every((p2) => Math.hypot(p2.r - x.r, p2.g - x.g, p2.b - x.b) > 58)) picked.push(x);
             if (picked.length === 3) break;
           }
-          const hex = picked.map((x) => "#" + [x.r, x.g, x.b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join(""));
+          const toHex = (x) => "#" + [x.r, x.g, x.b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+          if (!picked.length && neutralN) {
+            // Black / white / grey product — describe it by luminance.
+            const r = neutralR / neutralN, g = neutralG / neutralN, b = neutralB / neutralN;
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            const name = lum < 55 ? "black" : lum < 105 ? "charcoal grey" : lum < 165 ? "grey" : lum < 215 ? "light grey" : "white";
+            return { names: [name], hex: [toHex({ r, g, b })] };
+          }
+          const hex = picked.map(toHex);
           return { names: picked.map((x) => colorName(x.r, x.g, x.b)), hex };
         } catch (e) {
           return { names: [], hex: [] };
@@ -1085,6 +1105,13 @@ Rules:
         } catch (e) {
           return "";
         }
+      }
+
+      // Vision models often guess colours wrong. Keep their shape/material
+      // description but drop colour words so the measured palette wins.
+      const COLOUR_WORDS = /\b(black|white|off[- ]white|grey|gray|silver|metallic|red|maroon|burgundy|crimson|scarlet|blue|navy|azure|teal|cyan|turquoise|green|olive|emerald|mint|yellow|mustard|gold|golden|orange|rust|brown|tan|beige|cream|ivory|khaki|camel|pink|rose|magenta|purple|violet|lavender|lilac|charcoal|multicolou?r(ed)?|colourful|colorful)\b/gi;
+      function stripColours(t) {
+        return String(t || "").replace(COLOUR_WORDS, "").replace(/\s{2,}/g, " ").replace(/\s+([,.;])/g, "$1").replace(/^[\s,;]+|[\s,;]+$/g, "").trim();
       }
 
       async function paletteFrom(file) {
@@ -1502,22 +1529,43 @@ Rules:
           const explicit = optTxt.toLowerCase() !== "auto";
           const NONWEAR = /(bag|shoe|sofa|curtain|table|vase|lamp|rug|pillow|towel)/i;
           const isWearable = explicit ? !NONWEAR.test(optTxt) : true;
+
+          // Give the vision model a short head start so its description of the
+          // uploaded item can steer the render (colour, pattern, material).
+          const visionQuick = await Promise.race([
+            visionP,
+            new Promise((r) => setTimeout(() => r(""), 2000)),
+          ]).catch(() => "");
+          const desc = String(visionQuick || "").replace(/\s+/g, " ").trim().slice(0, 220);
+
           const look = isWearable
             ? "full body fashion editorial photo, model wearing it, centered vertical portrait composition, natural standing pose, plain light grey seamless studio backdrop, soft diffused key light, subtle rim light, ultra detailed fabric texture, photorealistic, sharp focus, 85mm lens, f/2.8, high resolution"
-            : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
+            : "professional product photography, one single item isolated and centred, no person, no model, no mannequin, no body parts, seamless neutral studio background, soft softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
+
           // If the user typed their own words, honour them literally — no rewriting.
           const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(extra);
-          const pal = palette.length && !hasColour
-            ? ` Garment colours: ${palette.join(", ")}${hexes.length ? ` (exact hex ${hexes.join(" ")})` : ""}.`
+          const cat = explicit ? optTxt.toLowerCase() : "";
+          const colourLine = palette.length && !hasColour
+            ? `Colour (measured from the uploaded item): ${palette[0]}${hexes[0] ? ` ${hexes[0]}` : ""}. The ${cat || "item"} must be this exact colour${palette.length > 1 ? `, with accents in ${palette.slice(1).join(" and ")}` : ""}. Do not recolour it.`
             : "";
           const subject = explicit
-            ? `a ${optTxt.toLowerCase()}`
-            : "a fashion model wearing the garment from the photo";
-          const imagePrompt = extra ? `${extra}, ${subject}, ${look}` : `${subject}${pal}, ${look}`;
+            ? (isWearable ? `a ${cat} worn by a fashion model` : `a single ${cat}`)
+            : "the garment from the uploaded photo worn by a fashion model";
+          const descClean = stripColours(desc);
+          const descLine = descClean ? `The uploaded item is: ${descClean}.` : "";
+
+          const parts = [];
+          if (extra) parts.push(extra);
+          parts.push(subject);
+          if (descLine) parts.push(descLine);
+          if (colourLine) parts.push(colourLine);
+          parts.push(look);
+          if (explicit && !isWearable) parts.push("Show only the item itself — do not add a person, model, mannequin or body.");
+          const imagePrompt = parts.join(", ");
 
           const refB64 = await refP;
           const refNote = refB64
-            ? " Keep the exact same garment design, colour, print, embroidery and cut as the garment in the reference image."
+            ? ` Keep the exact same ${isWearable ? "garment" : "item"} design, colour, print, embroidery, hardware and material as the reference image.`
             : "";
 
           // ---- the image starts now; text work finishes alongside it ------
@@ -1601,6 +1649,10 @@ Rules:
           setStep(4);
           showStatus("ready", plan.style || "", plan);
         } catch (e) {
+          arResultImg.removeAttribute("src");
+          arResultImg.classList.add("is-empty");
+          arDownload.hidden = true;
+          arCompare.hidden = true;
           arResultDesc.textContent = "Could not finish this one — please try again.";
           showStatus("failed", "AI unavailable, try again");
         } finally {
