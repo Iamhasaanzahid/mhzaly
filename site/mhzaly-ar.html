@@ -1451,9 +1451,13 @@ Rules:
           const typed = (arPrompt.value || "").trim();
           const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(typed);
           const pal = palette.length && !hasColour ? ` Colour palette: ${palette.join(", ")}.` : "";
-          const imagePrompt = typed
-            ? `${typed}${garment ? `. Keep this exact garment: ${garment}` : ""}, ${look}`
-            : `a fashion model wearing ${garment || plan.description || prompt}${pal}, ${look}`;
+          const imagePrompt = (() => {
+            const explicit = !!selectedOption && String(selectedOption).toLowerCase() !== "auto";
+            const subject = explicit
+              ? `a ${String(selectedOption).toLowerCase()}`
+              : `a fashion model wearing ${garment || plan.description || prompt}`;
+            return typed ? `${typed}, ${subject}, ${look}` : `${subject}${pal}, ${look}`;
+          })();
           const geminiKey = (parseKeys().find((k) => k.provider === "gemini") || {}).key;
           let gen = null;
           if (geminiKey && selectedFile) {
