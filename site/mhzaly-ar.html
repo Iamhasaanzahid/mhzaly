@@ -144,9 +144,9 @@
                   </div>
                   <textarea id="ar-prompt" class="ar-prompt" rows="2" placeholder="Optional details — colour, fabric, room… e.g. “cream kurta, place on body”"></textarea>
                   <div class="ar-mode" id="ar-mode">
-                    <button type="button" class="ar-mode-btn is-on" data-mode="ai">AI style</button>
-                    <button type="button" class="ar-mode-btn" data-mode="exact">Exact design</button>
-                    <span class="ar-mode-note" id="ar-mode-note">AI photo banaega — aapki photo ke rang</span>
+                    <button type="button" class="ar-mode-btn is-on" data-mode="ai">AI model</button>
+                    <button type="button" class="ar-mode-btn" data-mode="exact">Same photo</button>
+                    <span class="ar-mode-note" id="ar-mode-note">Naya model, naya background — same kapda</span>
                   </div>
                   <div class="foot">
                     <button class="ar-btn" id="ar-generate-btn" disabled>Generate with AI</button>
@@ -523,12 +523,12 @@ Rules:
         if (be && arBackend) arBackend.value = be;
         refreshPoolStatus();
       })();
-      let genMode = localStorage.getItem("mhzaly_gen_mode") || "ai";
+      let genMode = localStorage.getItem("mhzaly_gen_mode") === "exact" ? "exact" : "ai";
       const arModeNote = document.getElementById("ar-mode-note");
       (function initMode() {
         const btns = document.querySelectorAll(".ar-mode-btn");
         const note = {
-          ai: "AI photo banaega — aapki photo ke rang",
+          ai: "Naya model, naya background — same kapda",
           exact: "Aapki hi photo — design 100% same",
         };
         btns.forEach((b) => {
@@ -1474,19 +1474,23 @@ Rules:
               gen = await designLockedRender(selectedFile);
             } catch (e) { gen = null; }
           }
-          if (!gen) {
+          // AI style: always a brand-new render. The uploaded photo is never shown.
+          for (let attempt = 0; !gen && genMode !== "exact" && attempt < 2; attempt++) {
             try {
+              if (attempt) showStatus("generating image", "AI retrying…");
               gen = await generateImage(imagePrompt);
             } catch (e) { gen = null; }
           }
-          if (!gen && selectedFile) {
-            try {
-              showStatus("rendering", "AI busy — exact design render");
-              gen = await designLockedRender(selectedFile);
-            } catch (e) { gen = null; }
+          if (!gen && genMode === "exact" && selectedFile) {
+            try { gen = await designLockedRender(selectedFile); } catch (e) { gen = null; }
           }
-          if (!gen && selectedFile) {
-            gen = { url: URL.createObjectURL(selectedFile), blob: selectedFile };
+          if (!gen) {
+            arResultImg.src = arPreview.src;
+            arResultDesc.textContent = "AI is busy right now — press Generate with AI once more.";
+            arDownload.hidden = true;
+            setStep(1);
+            showStatus("failed", "AI busy — try again");
+            return;
           }
           if (gen) {
             arResultImg.src = gen.url;
