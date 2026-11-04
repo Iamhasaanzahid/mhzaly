@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#f5f0e8" />
     <link rel="canonical" href="https://mhzaly.surge.sh/mhzaly-ar.html" />
     <link rel="stylesheet" href="fonts.css?v=1" />
-    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104c" />
+    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104d" />
     <script type="importmap">
       {
         "imports": {
@@ -184,6 +184,7 @@
                   <img id="ar-result-img" alt="Generated AR asset preview" />
                   <canvas id="ar-3d-canvas"></canvas>
                   <span class="ar-card-tag">AR ready</span>
+                  <div class="ar-progress" id="ar-progress" hidden><i></i></div>
                 </div>
                 <div class="body">
                   <h3 id="ar-result-title">Your 3D AR asset</h3>
@@ -199,15 +200,25 @@
                     <a class="ar-btn" href="index.html#fabric-ai">Open in 3D Studio</a>
                     <a class="ar-btn ar-btn-ghost" id="ar-download" href="#" download="mhzaly-ar-asset.jpg" hidden>⬇ Save image</a>
                     <button class="ar-btn ar-btn-ghost" id="ar-compare" type="button" hidden>⇄ See original</button>
+                    <button class="ar-btn ar-btn-ghost" id="ar-expand" type="button" hidden>⤢ View full</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-glb" type="button" hidden>⬇ Download 3D (GLB)</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-again-btn" type="button">Generate another</button>
                   </div>
                 </div>
               </article>
+              <div class="ar-history" id="ar-history" hidden>
+                <span class="ar-history-label">Recent renders</span>
+                <div class="ar-history-list" id="ar-history-list"></div>
+              </div>
             </div>
             <p class="ar-job-status" id="ar-job-status">Job status: —</p>
           </div>
         </section>
+
+        <div class="ar-lightbox" id="ar-lightbox" hidden>
+          <button class="ar-lightbox-close" id="ar-lightbox-close" type="button" aria-label="Close">✕</button>
+          <img id="ar-lightbox-img" alt="Generated look, full size" />
+        </div>
 
         <!-- ================= GENERATE WITH AI ================= -->
         <section class="ar-section" id="generate">
@@ -583,6 +594,12 @@ Rules:
       });
       const arResultMeta = document.getElementById("ar-result-meta");
       const arCompare = document.getElementById("ar-compare");
+      const arExpand = document.getElementById("ar-expand");
+      const arProgress = document.getElementById("ar-progress");
+      const arHistory = document.getElementById("ar-history");
+      const arHistoryList = document.getElementById("ar-history-list");
+      const arLightbox = document.getElementById("ar-lightbox");
+      const arLightboxImg = document.getElementById("ar-lightbox-img");
       const arDownload = document.getElementById("ar-download");
 
       let selectedOption = "Auto";
@@ -769,7 +786,7 @@ Rules:
       }
 
       // Reads the uploaded photo and returns its dominant clothing colours.
-      async function paletteFrom(file) {
+      async function paletteData(file) {
         try {
           const img = await loadImageFile(file);
           const c = document.createElement("canvas");
@@ -797,9 +814,10 @@ Rules:
             if (picked.every((p2) => Math.hypot(p2.r - x.r, p2.g - x.g, p2.b - x.b) > 58)) picked.push(x);
             if (picked.length === 3) break;
           }
-          return picked.map((x) => colorName(x.r, x.g, x.b));
+          const hex = picked.map((x) => "#" + [x.r, x.g, x.b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join(""));
+          return { names: picked.map((x) => colorName(x.r, x.g, x.b)), hex };
         } catch (e) {
-          return [];
+          return { names: [], hex: [] };
         }
       }
 
@@ -1066,6 +1084,10 @@ Rules:
         } catch (e) {
           return "";
         }
+      }
+
+      async function paletteFrom(file) {
+        return (await paletteData(file)).names;
       }
 
       // Pollinations stamps a small logo bottom-right; crop it and normalise size.
@@ -1418,6 +1440,8 @@ Rules:
         arResultImg.classList.remove("is-empty");
         document.querySelector(".ar-result-media").classList.add("is-loading");
         if (arCompare) arCompare.hidden = true;
+        if (arExpand) arExpand.hidden = true;
+        startProgress();
         arResultDesc.textContent = "Reading your image and planning the 3D asset…";
         setStep(0);
         showStatus("processing");
@@ -1435,7 +1459,9 @@ Rules:
           const visionP = selectedFile && genMode !== "exact"
             ? describeGarment(selectedFile).catch(() => "")
             : Promise.resolve("");
-          const paletteP = selectedFile ? paletteFrom(selectedFile).catch(() => []) : Promise.resolve([]);
+          const paletteP = selectedFile
+            ? paletteData(selectedFile).catch(() => ({ names: [], hex: [] }))
+            : Promise.resolve({ names: [], hex: [] });
           const refP = (async () => {
             if (!selectedFile || genMode === "exact") return "";
             try { return await smallJpegB64(selectedFile, 512, 0.9); } catch (e) { return ""; }
@@ -1468,7 +1494,9 @@ Rules:
             return cleanPlan(p);
           })();
 
-          const palette = await paletteP;
+          const palData = await paletteP;
+          const palette = palData.names || [];
+          const hexes = palData.hex || [];
           const optTxt = String(selectedOption || "Auto");
           const explicit = optTxt.toLowerCase() !== "auto";
           const NONWEAR = /(bag|shoe|sofa|curtain|table|vase|lamp|rug|pillow|towel)/i;
@@ -1478,7 +1506,9 @@ Rules:
             : "professional product photography, seamless neutral background, soft studio softbox lighting, ultra detailed texture, photorealistic, sharp focus, high resolution";
           // If the user typed their own words, honour them literally — no rewriting.
           const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(extra);
-          const pal = palette.length && !hasColour ? ` Colour palette: ${palette.join(", ")}.` : "";
+          const pal = palette.length && !hasColour
+            ? ` Garment colours: ${palette.join(", ")}${hexes.length ? ` (exact hex ${hexes.join(" ")})` : ""}.`
+            : "";
           const subject = explicit
             ? `a ${optTxt.toLowerCase()}`
             : "a fashion model wearing the garment from the photo";
@@ -1547,6 +1577,9 @@ Rules:
           arCompare.dataset.orig = arPreview.src || "";
           arCompare.textContent = "⇄ See original";
           arCompare.dataset.mode = "ai";
+          if (arExpand) arExpand.hidden = false;
+          endProgress();
+          pushHistory(gen.url, gen.model);
           if (window.__init3D) window.__init3D(gen.url);
 
           // ---- now collect the slower text work ---------------------------
@@ -1573,6 +1606,7 @@ Rules:
           arGenerateBtn.textContent = "Generate with AI";
           const media = document.querySelector(".ar-result-media");
           if (media) media.classList.remove("is-loading");
+          endProgress();
         }
       });
 
@@ -1583,6 +1617,79 @@ Rules:
           arResultImg.src = showOriginal ? arCompare.dataset.orig : arCompare.dataset.gen;
           arCompare.dataset.mode = showOriginal ? "orig" : "ai";
           arCompare.textContent = showOriginal ? "⇄ See AI result" : "⇄ See original";
+        });
+      }
+
+      // ---- progress bar -------------------------------------------------
+      let progressTimer = null;
+      function startProgress() {
+        if (!arProgress) return;
+        arProgress.hidden = false;
+        const bar = arProgress.firstElementChild;
+        let p = 6;
+        bar.style.width = p + "%";
+        clearInterval(progressTimer);
+        progressTimer = setInterval(() => {
+          p = Math.min(90, p + Math.max(0.8, (92 - p) * 0.07));
+          bar.style.width = p.toFixed(1) + "%";
+        }, 250);
+      }
+      function endProgress() {
+        clearInterval(progressTimer);
+        if (!arProgress) return;
+        const bar = arProgress.firstElementChild;
+        bar.style.width = "100%";
+        setTimeout(() => { arProgress.hidden = true; bar.style.width = "0"; }, 450);
+      }
+
+      // ---- recent renders -----------------------------------------------
+      const historyItems = [];
+      function pushHistory(url, model) {
+        if (!url) return;
+        historyItems.unshift({ url, model: model || "" });
+        while (historyItems.length > 8) historyItems.pop();
+        if (arHistory) arHistory.hidden = historyItems.length < 2;
+        if (arHistoryList) {
+          arHistoryList.innerHTML = historyItems.map((h, i) =>
+            `<button class="ar-history-item" type="button" data-i="${i}" title="${h.model || "render"}"><img src="${h.url}" alt=""></button>`
+          ).join("");
+        }
+      }
+      if (arHistoryList) {
+        arHistoryList.addEventListener("click", (e) => {
+          const b = e.target.closest(".ar-history-item");
+          if (!b) return;
+          const item = historyItems[parseInt(b.dataset.i, 10)];
+          if (!item) return;
+          arResultImg.src = item.url;
+          arResultImg.classList.remove("is-empty");
+          arDownload.href = item.url;
+          if (arCompare) arCompare.dataset.gen = item.url;
+          if (window.__init3D) window.__init3D(item.url);
+        });
+      }
+
+      // ---- full-size lightbox -------------------------------------------
+      function openLightbox(src) {
+        if (!src || !arLightbox || !arLightboxImg) return;
+        arLightboxImg.src = src;
+        arLightbox.hidden = false;
+      }
+      if (arExpand) arExpand.addEventListener("click", () => openLightbox(arResultImg.src));
+      const mediaEl = document.querySelector(".ar-result-media");
+      if (mediaEl) {
+        mediaEl.addEventListener("click", (e) => {
+          const canvas = document.getElementById("ar-3d-canvas");
+          if (canvas && canvas.classList.contains("is-on")) return;
+          if (e.target === arResultImg && arResultImg.getAttribute("src")) openLightbox(arResultImg.src);
+        });
+      }
+      if (arLightbox) {
+        arLightbox.addEventListener("click", (e) => {
+          if (e.target === arLightbox || e.target.id === "ar-lightbox-close") arLightbox.hidden = true;
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") arLightbox.hidden = true;
         });
       }
     </script>
