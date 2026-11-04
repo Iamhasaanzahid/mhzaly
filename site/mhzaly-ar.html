@@ -6,9 +6,9 @@
     <title>MHZALY — Create AR in Seconds</title>
     <meta name="description" content="MHZALY — Create Web-Based AR Experiences. Upload a 3D model or generate one with AI. Turn any idea, image, or 3D model into a scannable AR experience. No App Needed." />
     <meta name="theme-color" content="#f5f0e8" />
-    <link rel="canonical" href="https://mhzaly.surge.sh/mhzaly-ar.html" />
+    <link rel="canonical" href="https://mhzaly.pages.dev/mhzaly-ar.html" />
     <link rel="stylesheet" href="fonts.css?v=1" />
-    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104d" />
+    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104f" />
     <script type="importmap">
       {
         "imports": {
@@ -445,7 +445,8 @@
       const api = (p) => `${AR_API_BASE}${p}`;
       const FREE_AI = "https://text.pollinations.ai/openai";
       let lastRetryAfter = 0;
-      const GEN_IMG = (p, model = "sana") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.surge.sh&seed=${Math.floor(Math.random() * 1e9)}`;
+      let freeCooldownUntil = 0;
+      const GEN_IMG = (p, model = "flux") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.pages.dev&seed=${Math.floor(Math.random() * 1e9)}`;
       const AGENT_SYSTEM = `You are a senior fashion art director and AR planner.
 The user uploads a photo and may pick an item or type a request.
 Read their words carefully and convert them into a precise image-generation brief.
@@ -1214,7 +1215,7 @@ Rules:
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
               showStatus("generating image", attempt === 0 ? "free renderer" : "free renderer · retry");
-              const res = await withTimeout(fetch(GEN_IMG(promptText, "sana"), { mode: "cors", cache: "no-store" }), 30000, "sana");
+              const res = await withTimeout(fetch(GEN_IMG(promptText, "flux"), { mode: "cors", cache: "no-store" }), 30000, "flux");
               const type = res.headers.get("content-type") || "";
               if (res.ok && type.startsWith("image/")) {
                 const raw = await res.blob();
@@ -1222,7 +1223,7 @@ Rules:
                   const blob = await cleanPollinations(raw);
                   lastRetryAfter = 0;
                   showStatus("image ready", `${elapsed()}s`);
-                  return { url: URL.createObjectURL(blob), blob, model: "pollinations" };
+                  return { url: URL.createObjectURL(blob), blob, model: "pollinations-direct" };
                 }
               }
               if (res.status === 402 || res.status === 429) {
@@ -1579,6 +1580,7 @@ Rules:
           arCompare.dataset.mode = "ai";
           if (arExpand) arExpand.hidden = false;
           endProgress();
+          if (gen.model === "pollinations-direct") freeCooldownUntil = Date.now() + 46000;
           pushHistory(gen.url, gen.model);
           if (window.__init3D) window.__init3D(gen.url);
 
@@ -1604,6 +1606,7 @@ Rules:
         } finally {
           arGenerateBtn.disabled = false;
           arGenerateBtn.textContent = "Generate with AI";
+          startFreeCooldown();
           const media = document.querySelector(".ar-result-media");
           if (media) media.classList.remove("is-loading");
           endProgress();
@@ -1618,6 +1621,23 @@ Rules:
           arCompare.dataset.mode = showOriginal ? "orig" : "ai";
           arCompare.textContent = showOriginal ? "⇄ See AI result" : "⇄ See original";
         });
+      }
+
+      // ---- free-tier cooldown (Pollinations = 1 image / 45s per IP) -------
+      function startFreeCooldown() {
+        if (freeCooldownUntil - Date.now() <= 0) return;
+        arGenerateBtn.disabled = true;
+        const tick = () => {
+          const ms = freeCooldownUntil - Date.now();
+          if (ms <= 0) {
+            arGenerateBtn.disabled = false;
+            arGenerateBtn.textContent = "Generate with AI";
+            return;
+          }
+          arGenerateBtn.textContent = `Next free render in ${Math.ceil(ms / 1000)}s`;
+          setTimeout(tick, 500);
+        };
+        tick();
       }
 
       // ---- progress bar -------------------------------------------------

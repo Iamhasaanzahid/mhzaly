@@ -205,21 +205,25 @@ async function flux2Image(env, model, { prompt, width, height, steps, refBytes }
 // Pollinations: free + keyless. Soft limit is 1 image / 45s per IP, so we
 // honour the retry-after the service tells us instead of failing.
 async function pollinations(prompt, w, h) {
-  const seed = Math.floor(Math.random() * 1e9);
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&model=sana&referrer=mhzaly.surge.sh&seed=${seed}`;
-  try {
-    const r = await fetch(url, { headers: { "User-Agent": UA, "Accept": "image/*" } });
-    const type = r.headers.get("content-type") || "";
-    if (r.ok && type.startsWith("image/")) {
-      const b = new Uint8Array(await r.arrayBuffer());
-      if (b.length > 3000) return { bytes: b };
-    }
-    if (r.status === 402 || r.status === 429) {
-      const txt = await r.text();
-      const m = /retry after (\d+)\s*s/i.exec(txt);
-      return { bytes: null, retryAfter: m ? parseInt(m[1], 10) : 45 };
-    }
-  } catch {}
+  // Free tier: 1 image / 45s per IP, shared across models. `flux` gives the
+  // best quality per second; `sana` is the last-resort fallback.
+  for (const model of ["flux", "sana"]) {
+    const seed = Math.floor(Math.random() * 1e9);
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&nologo=true&model=${model}&referrer=mhzaly.pages.dev&seed=${seed}`;
+    try {
+      const r = await fetch(url, { headers: { "User-Agent": UA, "Accept": "image/*" } });
+      const type = r.headers.get("content-type") || "";
+      if (r.ok && type.startsWith("image/")) {
+        const b = new Uint8Array(await r.arrayBuffer());
+        if (b.length > 3000) return { bytes: b, model };
+      }
+      if (r.status === 402 || r.status === 429) {
+        const txt = await r.text();
+        const m = /retry after (\d+)\s*s/i.exec(txt);
+        return { bytes: null, retryAfter: m ? parseInt(m[1], 10) : 45 };
+      }
+    } catch {}
+  }
   return { bytes: null, retryAfter: 45 };
 }
 
@@ -258,7 +262,7 @@ async function generateImageCore(env, { prompt, refBytes, w, h, steps, quality }
 
   return {
     res: new Response(bytes, {
-      headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": model, "Cache-Control": "public, max-age=86400" },
+      headers: { ...CORS, "Content-Type": "image/jpeg", "X-Model": model, "X-AI-Log": log.join("|").slice(0, 300), "Cache-Control": "public, max-age=86400" },
     }),
     log,
     retryAfter: 0,
