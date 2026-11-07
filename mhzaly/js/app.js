@@ -47,6 +47,13 @@ export function init() {
       configureShop({ shopId: stored.id });
       bootstrap().then((res) => {
         hydrate(res.data);
+        if (res.shop) {
+          db.settings._plan = res.shop.plan;
+          db.settings._planLabel = res.shop.planLabel;
+          db.settings._daysLeft = res.shop.daysLeft;
+          db.settings._billingStatus = res.shop.billingStatus;
+          save();
+        }
         markSynced();
         renderShell();
         navigate('#/dashboard');

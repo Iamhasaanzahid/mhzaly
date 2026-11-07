@@ -71,6 +71,12 @@ export function render(root) {
                 <input class="input" name="receiptNote" value="${esc(s.receiptNote)}" placeholder="Thank you!" />
               </div>
             </div>
+            <div class="alert-box mt" style="background:#f8fafc;border-color:#e2e8f0;color:#334155">
+              ${icon('alert')}
+              <div><b>Current Plan:</b> ${esc(db.settings._planLabel || '—')}</div>
+              <div><b>Status:</b> ${esc(db.settings._billingStatus || '—')}</div>
+              <div><b>Days Left:</b> ${esc(db.settings._daysLeft == null ? 'Lifetime' : db.settings._daysLeft + ' din')}</div>
+            </div>
             <div class="form-actions"><button class="btn btn-primary" type="submit">${icon('check')} Save shop details</button></div>
           </form>
         </div>

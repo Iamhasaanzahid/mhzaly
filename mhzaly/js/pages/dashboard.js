@@ -35,6 +35,8 @@ export function render(root) {
       <div><span class="lbl">Profit</span><b class="val">Rs ${esc(Number(profit || 0).toLocaleString())}</b></div>
       <div><span class="lbl">Products</span><b class="val">${esc(db.products.length)}</b></div>
       <div><span class="lbl">Low Stock</span><b class="val">${esc(low.length)}</b></div>
+      <div><span class="lbl">Plan</span><b class="val">${esc(db.settings._planLabel || '—')}</b></div>
+      <div><span class="lbl">Days Left</span><b class="val">${esc(db.settings._daysLeft == null ? '—' : db.settings._daysLeft + ' din')}</b></div>
     </div>
 
     <div class="grid k2 mt">
