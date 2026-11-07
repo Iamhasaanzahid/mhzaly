@@ -4,8 +4,7 @@
 Every shop gets its **own login and its own data** — inventory, POS billing, purchases,
 customer khata, supplier payments, expenses and profit reports, all in one place.
 
-- **Live app:** https://2438d3ae.mhzaly.pages.dev/
-- **Live app (GitHub Pages):** https://iamhasaanzahid.github.io/mhzaly/
+- **Live app:** https://mhzaly.pages.dev/
 - **Demo:** open the live app and click **Try a demo shop** (no account needed)
 
 ![mhzaly](https://img.shields.io/badge/status-live-0d9488) ![Multi-shop](https://img.shields.io/badge/multi--shop-accounts-0f766e) ![Cloud sync](https://img.shields.io/badge/cloud-synced-115e59) ![License MIT](https://img.shields.io/badge/license-MIT-blue)
@@ -40,11 +39,11 @@ customer khata, supplier payments, expenses and profit reports, all in one place
 
 ## Create your shop
 
-1. Open **https://iamhasaanzahid.github.io/mhzaly/**
+1. Open **https://mhzaly.pages.dev/**
 2. Click **Create a shop**, enter your shop name, email and a password.
 3. Your shop is created with a **shop code** (for example `al-madina`) and the common product list.
 4. Go to **Settings → Account & cloud sync** to copy your shop's own login link:
-   `https://iamhasaanzahid.github.io/mhzaly/?shop=al-madina`
+   `https://mhzaly.pages.dev/?shop=al-madina`
 5. Add/adjust products and start billing from **New Sale**.
 
 You can log in with **either your email or your shop code** plus the same password.
