@@ -39,6 +39,26 @@ export function render(root) {
       <div><span class="lbl">Days Left</span><b class="val">${esc(db.settings._daysLeft == null ? '—' : db.settings._daysLeft + ' din')}</b></div>
     </div>
 
+    ${
+      (db.settings._billingStatus === 'trial' || db.settings._billingStatus === 'expired' || db.settings._billingStatus === 'blocked')
+        ? `<div class="alert-box mt" style="background:#fee2e2;border-color:#fca5a5;color:#991b1b;animation:fadeOut 10s forwards">
+            ${icon('alert')}
+            <div>
+              <div style="font-weight:800">Plan Alert</div>
+              <div style="font-size:12.5px">
+                ${
+                  db.settings._billingStatus === 'trial'
+                    ? `Aap ka trial ${esc(db.settings._daysLeft)} din baad khatam ho jayega. Owner se plan renew karwayein.`
+                    : db.settings._billingStatus === 'expired'
+                      ? 'Aap ka plan khatam ho gaya hai. Owner se rabta karein.'
+                      : 'Aap ka account temporarily block hai — owner se rabta karein.'
+                }
+              </div>
+            </div>
+          </div>`
+        : ''
+    }
+
     <div class="grid k2 mt">
       <div class="card">
         <div class="card-head"><h3>Recent Sales</h3></div>

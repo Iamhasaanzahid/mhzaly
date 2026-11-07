@@ -362,3 +362,9 @@ td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
 .search-wrap .input { padding-left: 32px; }
 
 .flex > .input { min-width: 0; }
+
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; display: none; }
+}
