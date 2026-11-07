@@ -40,16 +40,22 @@ customer khata, supplier payments, expenses and profit reports, all in one place
 ## Create your shop
 
 1. Open **https://mhzaly.pages.dev/**
-2. Click **Create a shop**, enter your shop name, email and a password.
-3. Your shop is created with a **shop code** (for example `al-madina`) and the common product list.
-4. Go to **Settings → Account & cloud sync** to copy your shop's own login link:
+2. Click **Create a shop**, enter only your **shop name**, **shop phone number** and a **password**.
+3. Your request goes to the mhzaly owner (**mhzcyb@gmail.com**) for approval. The owner
+   receives an email with **Approve** and **Reject** buttons.
+4. After approval, log in with your **phone number** (or shop code) and the password you chose.
+5. Your shop gets a **shop code** (for example `al-madina`) and 12 common grocery products
+   automatically. The shop name and phone number you entered appear on every receipt.
+6. Go to **Settings → Account & cloud sync** to copy your shop's own login link:
    `https://mhzaly.pages.dev/?shop=al-madina`
-5. Add/adjust products and start billing from **New Sale**.
 
-You can log in with **either your email or your shop code** plus the same password.
+You can log in with **your phone number, your shop code, or your email** plus the same password.
 
 > **Shop login page:** opening `?shop=<your-code>` shows a branded login page for that shop.
 > Share it with staff or save it on the shop computer.
+
+> **Approval panel (owner):** if an approval email does not arrive, the owner can open the
+> private admin link (`/api/admin?key=...`) and approve or reject pending shops there.
 
 ---
 

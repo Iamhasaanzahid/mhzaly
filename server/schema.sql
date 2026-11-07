@@ -1,9 +1,14 @@
--- Mart Manager — D1 schema
+-- mhzaly — D1 schema
 CREATE TABLE IF NOT EXISTS shops (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   code TEXT NOT NULL UNIQUE,
   email TEXT NOT NULL,
+  phone TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  confirm_token TEXT,
+  confirm_expires TEXT,
+  approved_at TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -25,3 +30,5 @@ CREATE TABLE IF NOT EXISTS shop_data (
 
 CREATE INDEX IF NOT EXISTS idx_users_shop ON users(shop_id);
 CREATE INDEX IF NOT EXISTS idx_shops_code ON shops(code);
+CREATE INDEX IF NOT EXISTS idx_shops_phone ON shops(phone);
+CREATE INDEX IF NOT EXISTS idx_shops_confirm ON shops(confirm_token);

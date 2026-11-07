@@ -3,18 +3,10 @@
    ============================================================ */
 
 import {
-  login, register, publicShop, setDemo, clearSession, flushNow,
+  login, register, publicShop, setDemo, clearSession,
 } from '../api.js';
-import { configureShop, hydrate, seedCommonProducts, loadSampleData, exportDb } from '../db.js';
-import { icon, esc, toast } from '../ui.js';
-
-function slugify(name) {
-  return String(name || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 28);
-}
+import { configureShop, hydrate, loadSampleData } from '../db.js';
+import { icon, esc } from '../ui.js';
 
 function goToApp() {
   history.replaceState(null, '', location.pathname + '#/dashboard');
@@ -81,8 +73,8 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
 
           <form id="loginForm" ${isRegister ? 'hidden' : ''} autocomplete="on">
             <div class="field">
-              <label>Shop code or email</label>
-              <input class="input" name="identifier" id="loginIdentifier" required placeholder="e.g. al-madina or you@email.com" value="${esc(shopCode)}" autocomplete="username" />
+              <label>Phone number, email or shop code</label>
+              <input class="input" name="identifier" id="loginIdentifier" required placeholder="03xx-xxxxxxx or shop code" value="${esc(shopCode)}" autocomplete="username" />
             </div>
             <div class="field" style="margin-top:12px">
               <label>Password</label>
@@ -97,27 +89,21 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
                 <label>Shop name *</label>
                 <input class="input" name="shopName" id="shopName" required placeholder="e.g. Al-Madina Mart" maxlength="60" />
               </div>
-              <div class="field">
-                <label>Your name</label>
-                <input class="input" name="ownerName" placeholder="e.g. Ahmed" maxlength="50" />
+              <div class="field full">
+                <label>Shop phone number *</label>
+                <input class="input" name="phone" id="shopPhone" type="tel" inputmode="tel" required placeholder="e.g. 03001234567" maxlength="20" />
+                <span class="hint">Yehi number login aur receipt par automatically aayega.</span>
               </div>
-              <div class="field">
-                <label>Email *</label>
-                <input class="input" name="email" type="email" required placeholder="you@email.com" autocomplete="email" />
-              </div>
-              <div class="field">
-                <label>Shop code</label>
-                <input class="input" name="shopCode" id="shopCodeInput" placeholder="al-madina" pattern="[a-z0-9-]{3,30}" />
-                <span class="hint">Aap ka login page: /?shop=your-code</span>
-              </div>
-              <div class="field">
+              <div class="field full">
                 <label>Password *</label>
                 <input class="input" name="password" type="password" required minlength="6" placeholder="At least 6 characters" autocomplete="new-password" />
               </div>
             </div>
             <button class="btn btn-lg btn-block" style="margin-top:16px" id="registerBtn" type="submit">Create shop account</button>
-            <p class="auth-legal" style="text-align:left;margin-top:10px">Common grocery products (rice, oil, milk, tea…) will be added automatically. Aap baad mein apni items bhi add kar sakte hain.</p>
+            <p class="auth-legal" style="text-align:left;margin-top:10px">Common grocery products (rice, oil, milk, tea…) will be added automatically. Approval ke liye request owner ke email par jayegi.</p>
           </form>
+
+          <div id="registerPending" class="auth-success" hidden></div>
 
           <div class="auth-or"><span>or</span></div>
           <button type="button" class="auth-demo" id="demoBtn">${icon('sparkle')} Try a demo shop — no account needed</button>
@@ -139,6 +125,11 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     const reg = next === 'register';
     loginForm.hidden = reg;
     registerForm.hidden = !reg;
+    const panel = root.querySelector('#registerPending');
+    if (panel) {
+      panel.hidden = true;
+      panel.innerHTML = '';
+    }
     title.textContent = reg ? 'Create your shop' : 'Welcome back';
     sub.textContent = reg ? 'Free account — start in a minute' : 'Login to your shop';
     root.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('active', b.dataset.mode === next));
@@ -150,14 +141,31 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     btn.addEventListener('click', () => setMode(btn.dataset.mode))
   );
 
-  // auto-suggest shop code from the shop name
-  const shopName = root.querySelector('#shopName');
-  const codeInput = root.querySelector('#shopCodeInput');
-  let codeTouched = false;
-  codeInput.addEventListener('input', () => { codeTouched = true; });
-  shopName.addEventListener('input', () => {
-    if (!codeTouched) codeInput.value = slugify(shopName.value);
-  });
+  function showPending(res) {
+    const shop = res.shop || {};
+    const emailLine = res.emailSent
+      ? `Approval ke liye <b>mhzcyb@gmail.com</b> par email bheja gaya hai.`
+      : `Approval request owner ke paas pahunch gayi hai. Owner approve karte hi aap login kar sakte hain.`;
+    registerForm.hidden = true;
+    const panel = root.querySelector('#registerPending');
+    panel.hidden = false;
+    panel.innerHTML = `
+      <div class="auth-success-icon">${icon('check')}</div>
+      <h3>Request bhej di gayi!</h3>
+      <p><b>${esc(shop.name || 'Shop')}</b> ka account banane ki request save ho gayi hai. ${emailLine}</p>
+      <div class="auth-success-shop">
+        <div><span>Shop code</span><b>${esc(shop.code || '')}</b></div>
+        <div><span>Phone</span><b>${esc(shop.phone || '')}</b></div>
+      </div>
+      <p class="auth-success-note">Approval ke baad aap apne <b>phone number</b> aur password se login kar sakte hain.</p>
+      <button type="button" class="btn btn-lg btn-block" id="pendingLoginBtn">Login page par jayein</button>
+    `;
+    panel.querySelector('#pendingLoginBtn').addEventListener('click', () => {
+      setMode('login');
+      const idInput = root.querySelector('#loginIdentifier');
+      if (idInput) idInput.value = shop.phone || shop.code || '';
+    });
+  }
 
   // branded login page: /?shop=al-madina
   if (shopCode) {
@@ -169,7 +177,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
         document.title = `${shop.name} · Login | mhzaly`;
       })
       .catch(() => {
-        showError('Is shop code ka koi account nahi mila. Aap email se login kar sakte hain.');
+        showError('Is shop code ka koi account nahi mila. Aap phone number se login kar sakte hain.');
       });
   }
 
@@ -179,7 +187,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     const fd = new FormData(loginForm);
     const identifier = String(fd.get('identifier') || '').trim();
     const password = String(fd.get('password') || '');
-    if (!identifier || !password) return showError('Email/shop code aur password likhein');
+    if (!identifier || !password) return showError('Phone number/shop code aur password likhein');
     loginBtn.disabled = true;
     loginBtn.textContent = 'Logging in…';
     try {
@@ -199,39 +207,28 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     clearError();
     const fd = new FormData(registerForm);
     const shopNameVal = String(fd.get('shopName') || '').trim();
-    const ownerName = String(fd.get('ownerName') || '').trim();
-    const email = String(fd.get('email') || '').trim();
+    const phoneVal = String(fd.get('phone') || '').trim();
     const password = String(fd.get('password') || '');
-    const shopCodeVal = String(fd.get('shopCode') || '').trim().toLowerCase();
+    const phoneDigits = phoneVal.replace(/[^\d]/g, '');
 
     if (shopNameVal.length < 2) return showError('Shop ka naam likhein');
-    if (password.length < 6) return showError('Password kam az kam 6 characters ka hona chahiye');
-    if (shopCodeVal && !/^[a-z0-9-]{3,30}$/.test(shopCodeVal)) {
-      return showError('Shop code mein sirf a–z, 0–9 aur dash use karein');
+    if (phoneDigits.length < 7 || phoneDigits.length > 15) {
+      return showError('Sahi phone number likhein (misal: 03001234567)');
     }
+    if (password.length < 6) return showError('Password kam az kam 6 characters ka hona chahiye');
 
     registerBtn.disabled = true;
-    registerBtn.textContent = 'Creating your shop…';
+    registerBtn.textContent = 'Request bhej rahe hain…';
     try {
       const res = await register({
         shopName: shopNameVal,
-        ownerName,
-        email,
+        phone: phoneVal,
         password,
-        shopCode: shopCodeVal || undefined,
       });
-      configureShop({ shopId: res.shop.id });
-      hydrate(res.data);
-      const added = seedCommonProducts();
-      try {
-        await flushNow(exportDb());
-      } catch {
-        /* will sync on the next change */
-      }
-      sessionStorage.setItem('mhzaly_welcome', String(added));
-      goToApp();
+      showPending(res);
     } catch (err) {
-      showError(err.message || 'Account nahi ban saka');
+      showError(err.message || 'Account request nahi bhej saki');
+    } finally {
       registerBtn.disabled = false;
       registerBtn.textContent = 'Create shop account';
     }
@@ -246,6 +243,6 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     location.reload();
   });
 
-  const first = isRegister ? shopName : root.querySelector('#loginIdentifier');
+  const first = isRegister ? root.querySelector('#shopName') : root.querySelector('#loginIdentifier');
   setTimeout(() => first?.focus(), 80);
 }

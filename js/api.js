@@ -93,10 +93,7 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
 /* ---------------- auth API ---------------- */
 
 export async function register(payload) {
-  const res = await request('/api/register', { method: 'POST', body: payload, auth: false });
-  setToken(res.token);
-  setStoredShop(res.shop);
-  return res;
+  return request('/api/register', { method: 'POST', body: payload, auth: false });
 }
 
 export async function login(identifier, password) {

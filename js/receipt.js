@@ -48,7 +48,7 @@ export function receiptHTML(sale) {
     </table>
     <div class="r-dash"></div>
     <div class="r-center r-small">${esc(s.receiptNote || 'Thank you for shopping with us!')}</div>
-    <div class="r-center r-small" style="margin-top:6px">Powered by Mart Manager</div>
+    <div class="r-center r-small" style="margin-top:6px">Powered by mhzaly</div>
   </div>`;
 }
 
