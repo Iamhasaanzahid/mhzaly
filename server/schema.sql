@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS shops (
   code TEXT NOT NULL UNIQUE,
   email TEXT NOT NULL,
   phone TEXT,
+  shop_type TEXT NOT NULL DEFAULT 'mart',
   status TEXT NOT NULL DEFAULT 'active',
   confirm_token TEXT,
   confirm_expires TEXT,

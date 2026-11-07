@@ -44,7 +44,7 @@ export function render(root) {
       <div class="page-head">
         <div class="grow">
           <h2>${greeting()}${db.settings.ownerName ? ', ' + esc(db.settings.ownerName) : ''} 👋</h2>
-          <p>Let's set up your mart in a couple of minutes.</p>
+          <p>Let's set up your shop in a couple of minutes.</p>
         </div>
       </div>
       <div class="card">
@@ -115,7 +115,7 @@ export function render(root) {
     <div class="page-head">
       <div class="grow">
         <h2>${greeting()}${db.settings.ownerName ? ', ' + esc(db.settings.ownerName) : ''} 👋</h2>
-        <p>Here is what is happening at ${esc(db.settings.shopName || 'your mart')} today.</p>
+        <p>Here is what is happening at ${esc(db.settings.shopName || 'your shop')} today.</p>
       </div>
       <div class="head-actions">
         <button class="btn btn-ghost" data-go="products">${icon('plus')} Add product</button>

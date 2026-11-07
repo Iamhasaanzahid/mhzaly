@@ -2,7 +2,9 @@
    mhzaly — app shell, auth gate & router
    ============================================================ */
 
-import { db, lowStockProducts, totalReceivable, configureShop, hydrate } from './db.js';
+import {
+  db, lowStockProducts, totalReceivable, configureShop, hydrate, shopTypeLabel,
+} from './db.js';
 import { icon, esc, initials, navigate, toast, openModal, closeModal } from './ui.js';
 import {
   getToken, getStoredShop, isDemo, bootstrap, clearSession,
@@ -183,6 +185,7 @@ function openAccountModal() {
     body: `
       <div class="stat-strip">
         <div><div class="lbl">Shop code</div><div class="val mono" style="font-size:14px">${esc(code || 'demo')}</div></div>
+        <div><div class="lbl">Category</div><div class="val" style="font-size:13px">${esc(shopTypeLabel(db.settings.shopType))}</div></div>
         <div><div class="lbl">Login email</div><div class="val" style="font-size:13px;word-break:break-all">${esc(stored.email || '—')}</div></div>
         <div><div class="lbl">Mode</div><div class="val" style="font-size:14px">${demo ? 'Demo' : 'Cloud'}</div></div>
       </div>

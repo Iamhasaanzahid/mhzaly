@@ -5,7 +5,9 @@
 import {
   login, register, publicShop, setDemo, clearSession,
 } from '../api.js';
-import { configureShop, hydrate, loadSampleData } from '../db.js';
+import {
+  configureShop, hydrate, loadSampleData, SHOP_TYPES, shopTypeLabel,
+} from '../db.js';
 import { icon, esc } from '../ui.js';
 
 function goToApp() {
@@ -39,7 +41,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
           <span>mhzaly</span>
         </div>
         <div class="auth-pitch">
-          <span class="auth-eyebrow">Mart &amp; shop management</span>
+          <span class="auth-eyebrow">Shop &amp; inventory management</span>
           <h1>Your whole shop,<br /><em>in one place.</em></h1>
           <p>Billing, stock, udhaar khata, purchases aur profit — itna simple ke har shopkeeper use kar sakay.</p>
           <ul class="auth-points">
@@ -86,6 +88,13 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
           <form id="registerForm" ${isRegister ? '' : 'hidden'} autocomplete="on">
             <div class="form-grid">
               <div class="field full">
+                <label>Shop category *</label>
+                <select class="input" name="shopType" id="shopType" required>
+                  ${SHOP_TYPES.map((type) => `<option value="${type.id}">${esc(type.label)}</option>`).join('')}
+                </select>
+                <span class="hint" id="shopTypeHint">${esc(SHOP_TYPES[0].hint)}</span>
+              </div>
+              <div class="field full">
                 <label>Shop name *</label>
                 <input class="input" name="shopName" id="shopName" required placeholder="e.g. Al-Madina Mart" maxlength="60" />
               </div>
@@ -100,7 +109,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
               </div>
             </div>
             <button class="btn btn-lg btn-block" style="margin-top:16px" id="registerBtn" type="submit">Create shop account</button>
-            <p class="auth-legal" style="text-align:left;margin-top:10px">Common grocery products (rice, oil, milk, tea…) will be added automatically. Approval ke liye request owner ke email par jayegi.</p>
+            <p class="auth-legal" style="text-align:left;margin-top:10px">Aap ki category ke mutabiq starter products automatically add honge. Approval ke liye request owner ke email par jayegi.</p>
           </form>
 
           <div id="registerPending" class="auth-success" hidden></div>
@@ -110,7 +119,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
 
           <p class="auth-legal">Secure login · Aap ka data sirf aap ke shop account ke saath cloud mein save hota hai.</p>
         </div>
-        <div class="auth-bottom-note">mhzaly · Mart &amp; shop manager for every dukaan</div>
+        <div class="auth-bottom-note">mhzaly · Shop manager for every dukaan</div>
       </section>
     </div>`;
 
@@ -120,6 +129,15 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
   const registerBtn = root.querySelector('#registerBtn');
   const title = root.querySelector('#authTitle');
   const sub = root.querySelector('#authSub');
+  const shopTypeSelect = root.querySelector('#shopType');
+  const shopTypeHint = root.querySelector('#shopTypeHint');
+
+  if (shopTypeSelect) {
+    shopTypeSelect.addEventListener('change', () => {
+      const type = SHOP_TYPES.find((item) => item.id === shopTypeSelect.value);
+      if (shopTypeHint) shopTypeHint.textContent = type?.hint || '';
+    });
+  }
 
   function setMode(next) {
     const reg = next === 'register';
@@ -154,6 +172,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
       <h3>Request bhej di gayi!</h3>
       <p><b>${esc(shop.name || 'Shop')}</b> ka account banane ki request save ho gayi hai. ${emailLine}</p>
       <div class="auth-success-shop">
+        <div><span>Category</span><b>${esc(shop.shopTypeLabel || shopTypeLabel(shop.shopType))}</b></div>
         <div><span>Shop code</span><b>${esc(shop.code || '')}</b></div>
         <div><span>Phone</span><b>${esc(shop.phone || '')}</b></div>
       </div>
@@ -206,6 +225,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     e.preventDefault();
     clearError();
     const fd = new FormData(registerForm);
+    const shopTypeVal = String(fd.get('shopType') || 'mart');
     const shopNameVal = String(fd.get('shopName') || '').trim();
     const phoneVal = String(fd.get('phone') || '').trim();
     const password = String(fd.get('password') || '');
@@ -221,6 +241,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     registerBtn.textContent = 'Request bhej rahe hain…';
     try {
       const res = await register({
+        shopType: shopTypeVal,
         shopName: shopNameVal,
         phone: phoneVal,
         password,

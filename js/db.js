@@ -11,6 +11,25 @@ const SCHEMA_VERSION = 1;
 let storageKey = LEGACY_KEY;
 let syncEnabled = false;
 
+/* Shop categories offered at signup. Products are seeded by the API. */
+export const SHOP_TYPES = [
+  { id: 'mart', label: 'Mart / Kiryana', hint: 'Grocery, household items, drinks aur daily-use products.' },
+  { id: 'mobile', label: 'Mobile Shop', hint: 'Chargers, cables, covers, earbuds aur mobile accessories.' },
+  { id: 'electronics', label: 'Electronics', hint: 'Bulbs, fans, kettles, wires aur electrical items.' },
+  { id: 'medical', label: 'Medical Store / Pharmacy', hint: 'Medicines, first aid, hygiene aur health products.' },
+  { id: 'clothing', label: 'Clothing / Garments', hint: 'Shirts, kurtis, jeans, kids wear aur accessories.' },
+  { id: 'cosmetics', label: 'Cosmetics / Beauty', hint: 'Makeup, skincare, haircare aur perfumes.' },
+  { id: 'stationery', label: 'Stationery', hint: 'Pens, notebooks, school aur office items.' },
+  { id: 'hardware', label: 'Hardware', hint: 'Tools, paint, locks, wires aur plumbing items.' },
+  { id: 'bakery', label: 'Bakery / Food', hint: 'Bread, cakes, cookies, patties aur bakery items.' },
+  { id: 'general', label: 'General Store', hint: 'Mixed daily-use products — grocery style starter list.' },
+  { id: 'other', label: 'Other', hint: 'Koi aur type ki shop — starter products khali rahenge.' },
+];
+
+export function shopTypeLabel(id) {
+  return SHOP_TYPES.find((type) => type.id === id)?.label || SHOP_TYPES[0].label;
+}
+
 /* Common grocery items every new shop starts with. */
 export const COMMON_PRODUCTS = [
   { name: 'Daal Chana (500g)', category: 'Grocery', unit: 'pack', cost: 145, price: 180, lowStock: 10, sku: '1001' },
@@ -32,6 +51,7 @@ export function defaultSettings() {
     shopName: 'My Mart',
     ownerName: '',
     phone: '',
+    shopType: 'mart',
     address: '',
     currency: 'Rs',
     taxRate: 0,

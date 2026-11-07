@@ -26,9 +26,10 @@ customer khata, supplier payments, expenses and profit reports, all in one place
 | **Reports** | Date-range revenue, gross profit, expenses, net profit, sales trend, top products, category & payment breakdown, CSV export |
 | **Settings** | Shop details, currency, tax, shop login link, password change, backup/restore, demo data |
 
-- **Ready-to-use catalogue** — every new shop starts with 12 common grocery items
-  (rice, oil, sugar, milk, tea, soap…) and starting stock, so you can make your first bill
-  immediately. Add or edit as many products as you like.
+- **Category-based catalogue** — choose your shop type at signup and get 12 matching starter
+  products with starting stock: Mart / Kiryana, Mobile Shop, Electronics, Medical Store,
+  Clothing, Cosmetics, Stationery, Hardware, Bakery or General Store. "Other" starts empty.
+  Add or edit as many products as you like.
 - **Barcode ready** — any USB/Bluetooth barcode scanner that types text works in the POS search box.
 - **Printable receipts** — 80mm-style thermal receipt layout using the browser print dialog.
 - **Works offline** — data is cached in the browser, so billing keeps working during internet outages
@@ -40,12 +41,13 @@ customer khata, supplier payments, expenses and profit reports, all in one place
 ## Create your shop
 
 1. Open **https://mhzaly.pages.dev/**
-2. Click **Create a shop**, enter only your **shop name**, **shop phone number** and a **password**.
+2. Click **Create a shop**, choose your **shop category**, then enter your **shop name**,
+   **shop phone number** and a **password**.
 3. Your request goes to the mhzaly owner (**mhzcyb@gmail.com**) for approval. The owner
    receives an email with **Approve** and **Reject** buttons.
 4. After approval, log in with your **phone number** (or shop code) and the password you chose.
-5. Your shop gets a **shop code** (for example `al-madina`) and 12 common grocery products
-   automatically. The shop name and phone number you entered appear on every receipt.
+5. Your shop gets a **shop code** (for example `al-madina`) and 12 starter products matching
+   the category you selected. The shop name and phone number you entered appear on every receipt.
 6. Go to **Settings → Account & cloud sync** to copy your shop's own login link:
    `https://mhzaly.pages.dev/?shop=al-madina`
 

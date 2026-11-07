@@ -4,6 +4,7 @@
 
 import {
   db, save, exportDb, importDb, clearAll, loadSampleData, defaultSettings,
+  SHOP_TYPES,
 } from '../db.js';
 import {
   getStoredShop, isDemo, clearSession, deleteAccount, changePassword,
@@ -149,6 +150,13 @@ export function render(root) {
                 <label>Shop name</label>
                 <input class="input" name="shopName" value="${esc(s.shopName)}" placeholder="My Mart" />
               </div>
+              <div class="field full">
+                <label>Shop category</label>
+                <select class="input" name="shopType">
+                  ${SHOP_TYPES.map((type) => `<option value="${type.id}" ${type.id === (s.shopType || 'mart') ? 'selected' : ''}>${esc(type.label)}</option>`).join('')}
+                </select>
+                <span class="hint">Category sirf label badalti hai — existing products wohi rahenge.</span>
+              </div>
               <div class="field">
                 <label>Owner name</label>
                 <input class="input" name="ownerName" value="${esc(s.ownerName)}" placeholder="Your name" />
@@ -242,9 +250,9 @@ export function render(root) {
       <div class="card-head"><h3>About mhzaly</h3><div class="right"><span class="badge teal">v${VERSION}</span></div></div>
       <div class="card-pad">
         <p class="small muted" style="max-width:760px">
-          mhzaly is a simple online shop manager for marts, kiryana stores and general stores.
-          Har shop ka apna login aur alag data hota hai — inventory, POS billing, purchases, customer khata,
-          supplier payments, expenses and profit reports, sab ek jagah.
+          mhzaly is a simple online shop manager for marts, mobile shops, pharmacies, clothing stores,
+          electronics, hardware and general stores. Har shop ka apna login aur alag data hota hai —
+          inventory, POS billing, purchases, customer khata, supplier payments, expenses and profit reports, sab ek jagah.
         </p>
         <div class="flex flex-wrap mt" style="gap:8px">
           <span class="badge">Multi-shop accounts</span>
@@ -263,6 +271,7 @@ export function render(root) {
     e.preventDefault();
     const fd = new FormData(e.target);
     db.settings.shopName = String(fd.get('shopName') || '').trim() || 'My Mart';
+    db.settings.shopType = String(fd.get('shopType') || 'mart');
     db.settings.ownerName = String(fd.get('ownerName') || '').trim();
     db.settings.phone = String(fd.get('phone') || '').trim();
     db.settings.address = String(fd.get('address') || '').trim();

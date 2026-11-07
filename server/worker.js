@@ -11,7 +11,7 @@ const OWNER_EMAIL_DEFAULT = 'mhzcyb@gmail.com';
 const CONFIRM_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const PUBLIC_APP_URL = 'https://mhzaly.pages.dev/';
 
-const COMMON_PRODUCTS = [
+const MART_PRODUCTS = [
   { name: 'Daal Chana (500g)', category: 'Grocery', unit: 'pack', cost: 145, price: 180, lowStock: 10, sku: '1001' },
   { name: 'Basmati Rice 1kg', category: 'Grocery', unit: 'kg', cost: 230, price: 280, lowStock: 10, sku: '1002' },
   { name: 'Cooking Oil 1L', category: 'Grocery', unit: 'ltr', cost: 420, price: 490, lowStock: 10, sku: '1003' },
@@ -25,6 +25,154 @@ const COMMON_PRODUCTS = [
   { name: 'Cold Drink 1.5L', category: 'Beverages', unit: 'bottle', cost: 150, price: 190, lowStock: 8, sku: '1011' },
   { name: 'Biscuits Family Pack', category: 'Snacks', unit: 'pack', cost: 90, price: 120, lowStock: 10, sku: '1012' },
 ];
+
+const SHOP_TYPES = {
+  mart: { label: 'Mart / Kiryana', products: MART_PRODUCTS },
+  mobile: {
+    label: 'Mobile Shop',
+    products: [
+      { name: 'USB Charger 10W', category: 'Chargers', unit: 'pcs', cost: 350, price: 500, lowStock: 5, sku: '2001' },
+      { name: 'Fast Charger 20W', category: 'Chargers', unit: 'pcs', cost: 900, price: 1200, lowStock: 5, sku: '2002' },
+      { name: 'Type-C Cable', category: 'Cables', unit: 'pcs', cost: 200, price: 300, lowStock: 10, sku: '2003' },
+      { name: 'Micro USB Cable', category: 'Cables', unit: 'pcs', cost: 150, price: 250, lowStock: 10, sku: '2004' },
+      { name: 'Lightning Cable', category: 'Cables', unit: 'pcs', cost: 350, price: 500, lowStock: 6, sku: '2005' },
+      { name: 'Wired Earphones', category: 'Audio', unit: 'pcs', cost: 250, price: 400, lowStock: 8, sku: '2006' },
+      { name: 'Bluetooth Earbuds', category: 'Audio', unit: 'pcs', cost: 1800, price: 2500, lowStock: 4, sku: '2007' },
+      { name: 'Power Bank 10000mAh', category: 'Power', unit: 'pcs', cost: 2200, price: 3000, lowStock: 3, sku: '2008' },
+      { name: 'Phone Cover', category: 'Accessories', unit: 'pcs', cost: 150, price: 300, lowStock: 12, sku: '2009' },
+      { name: 'Screen Protector', category: 'Accessories', unit: 'pcs', cost: 80, price: 200, lowStock: 15, sku: '2010' },
+      { name: 'Car Charger', category: 'Chargers', unit: 'pcs', cost: 400, price: 600, lowStock: 5, sku: '2011' },
+      { name: 'SIM Ejector Tool', category: 'Accessories', unit: 'pcs', cost: 20, price: 50, lowStock: 20, sku: '2012' },
+    ],
+  },
+  electronics: {
+    label: 'Electronics',
+    products: [
+      { name: 'LED Bulb 12W', category: 'Lighting', unit: 'pcs', cost: 250, price: 350, lowStock: 10, sku: '3001' },
+      { name: 'Extension Board', category: 'Electrical', unit: 'pcs', cost: 450, price: 650, lowStock: 6, sku: '3002' },
+      { name: 'Electric Kettle', category: 'Appliances', unit: 'pcs', cost: 1800, price: 2400, lowStock: 3, sku: '3003' },
+      { name: 'Iron Press', category: 'Appliances', unit: 'pcs', cost: 2200, price: 2900, lowStock: 2, sku: '3004' },
+      { name: 'Table Fan', category: 'Appliances', unit: 'pcs', cost: 3500, price: 4500, lowStock: 2, sku: '3005' },
+      { name: 'TV Remote', category: 'Accessories', unit: 'pcs', cost: 250, price: 400, lowStock: 8, sku: '3006' },
+      { name: 'HDMI Cable', category: 'Cables', unit: 'pcs', cost: 350, price: 500, lowStock: 6, sku: '3007' },
+      { name: 'Wall Socket', category: 'Electrical', unit: 'pcs', cost: 120, price: 200, lowStock: 15, sku: '3008' },
+      { name: 'AA Battery Pack', category: 'Batteries', unit: 'pack', cost: 80, price: 120, lowStock: 20, sku: '3009' },
+      { name: 'Rechargeable Torch', category: 'Lighting', unit: 'pcs', cost: 400, price: 600, lowStock: 5, sku: '3010' },
+      { name: 'Voltage Stabilizer', category: 'Electrical', unit: 'pcs', cost: 2500, price: 3200, lowStock: 2, sku: '3011' },
+      { name: 'Soldering Iron', category: 'Tools', unit: 'pcs', cost: 500, price: 750, lowStock: 4, sku: '3012' },
+    ],
+  },
+  medical: {
+    label: 'Medical Store / Pharmacy',
+    products: [
+      { name: 'Panadol 500mg (Strip)', category: 'Pain Relief', unit: 'strip', cost: 25, price: 35, lowStock: 20, sku: '4001' },
+      { name: 'Disprin (Strip)', category: 'Pain Relief', unit: 'strip', cost: 20, price: 30, lowStock: 20, sku: '4002' },
+      { name: 'ORS Sachet', category: 'Hydration', unit: 'sachet', cost: 30, price: 45, lowStock: 25, sku: '4003' },
+      { name: 'Bandage Roll', category: 'First Aid', unit: 'roll', cost: 60, price: 90, lowStock: 15, sku: '4004' },
+      { name: 'Surgical Mask (Pack)', category: 'Protection', unit: 'pack', cost: 50, price: 80, lowStock: 20, sku: '4005' },
+      { name: 'Hand Sanitizer 100ml', category: 'Hygiene', unit: 'bottle', cost: 150, price: 220, lowStock: 10, sku: '4006' },
+      { name: 'Cough Syrup 100ml', category: 'Medicine', unit: 'bottle', cost: 120, price: 170, lowStock: 8, sku: '4007' },
+      { name: 'Antiseptic Liquid 100ml', category: 'First Aid', unit: 'bottle', cost: 180, price: 250, lowStock: 8, sku: '4008' },
+      { name: 'Digital Thermometer', category: 'Devices', unit: 'pcs', cost: 350, price: 500, lowStock: 4, sku: '4009' },
+      { name: 'Glucose D 200g', category: 'Energy', unit: 'pack', cost: 80, price: 120, lowStock: 10, sku: '4010' },
+      { name: 'Cotton Roll', category: 'First Aid', unit: 'roll', cost: 60, price: 90, lowStock: 12, sku: '4011' },
+      { name: 'Pain Relief Spray', category: 'Pain Relief', unit: 'pcs', cost: 350, price: 480, lowStock: 6, sku: '4012' },
+    ],
+  },
+  clothing: {
+    label: 'Clothing / Garments',
+    products: [
+      { name: 'Mens T-Shirt', category: 'Men', unit: 'pcs', cost: 600, price: 900, lowStock: 6, sku: '5001' },
+      { name: 'Mens Shirt', category: 'Men', unit: 'pcs', cost: 1200, price: 1700, lowStock: 5, sku: '5002' },
+      { name: 'Mens Jeans', category: 'Men', unit: 'pcs', cost: 1800, price: 2500, lowStock: 4, sku: '5003' },
+      { name: 'Womens Kurti', category: 'Women', unit: 'pcs', cost: 1500, price: 2200, lowStock: 5, sku: '5004' },
+      { name: 'Womens Dupatta', category: 'Women', unit: 'pcs', cost: 500, price: 800, lowStock: 8, sku: '5005' },
+      { name: 'Kids T-Shirt', category: 'Kids', unit: 'pcs', cost: 400, price: 650, lowStock: 8, sku: '5006' },
+      { name: 'Socks Pair', category: 'Accessories', unit: 'pair', cost: 100, price: 180, lowStock: 15, sku: '5007' },
+      { name: 'Handkerchief', category: 'Accessories', unit: 'pcs', cost: 60, price: 100, lowStock: 20, sku: '5008' },
+      { name: 'Leather Belt', category: 'Accessories', unit: 'pcs', cost: 350, price: 550, lowStock: 8, sku: '5009' },
+      { name: 'Cap', category: 'Accessories', unit: 'pcs', cost: 250, price: 400, lowStock: 8, sku: '5010' },
+      { name: 'Scarf', category: 'Women', unit: 'pcs', cost: 400, price: 650, lowStock: 8, sku: '5011' },
+      { name: 'Mens Trouser', category: 'Men', unit: 'pcs', cost: 1400, price: 2000, lowStock: 4, sku: '5012' },
+    ],
+  },
+  cosmetics: {
+    label: 'Cosmetics / Beauty',
+    products: [
+      { name: 'Face Wash 100ml', category: 'Skincare', unit: 'pcs', cost: 250, price: 350, lowStock: 8, sku: '6001' },
+      { name: 'Fairness Cream', category: 'Skincare', unit: 'pcs', cost: 300, price: 450, lowStock: 8, sku: '6002' },
+      { name: 'Lipstick', category: 'Makeup', unit: 'pcs', cost: 350, price: 500, lowStock: 10, sku: '6003' },
+      { name: 'Nail Polish', category: 'Makeup', unit: 'pcs', cost: 150, price: 250, lowStock: 12, sku: '6004' },
+      { name: 'Shampoo 200ml', category: 'Haircare', unit: 'bottle', cost: 350, price: 480, lowStock: 8, sku: '6005' },
+      { name: 'Conditioner 200ml', category: 'Haircare', unit: 'bottle', cost: 400, price: 550, lowStock: 6, sku: '6006' },
+      { name: 'Body Lotion 200ml', category: 'Skincare', unit: 'bottle', cost: 450, price: 600, lowStock: 6, sku: '6007' },
+      { name: 'Perfume Spray 50ml', category: 'Fragrance', unit: 'pcs', cost: 600, price: 900, lowStock: 5, sku: '6008' },
+      { name: 'Talcum Powder', category: 'Skincare', unit: 'pcs', cost: 250, price: 350, lowStock: 10, sku: '6009' },
+      { name: 'Hair Oil 100ml', category: 'Haircare', unit: 'bottle', cost: 200, price: 300, lowStock: 10, sku: '6010' },
+      { name: 'Makeup Kit', category: 'Makeup', unit: 'set', cost: 800, price: 1200, lowStock: 3, sku: '6011' },
+      { name: 'Sunblock 50ml', category: 'Skincare', unit: 'pcs', cost: 500, price: 700, lowStock: 5, sku: '6012' },
+    ],
+  },
+  stationery: {
+    label: 'Stationery',
+    products: [
+      { name: 'Ball Pen', category: 'Writing', unit: 'pcs', cost: 20, price: 30, lowStock: 30, sku: '7001' },
+      { name: 'Notebook 100 Pages', category: 'Paper', unit: 'pcs', cost: 80, price: 120, lowStock: 20, sku: '7002' },
+      { name: 'Pencil', category: 'Writing', unit: 'pcs', cost: 15, price: 25, lowStock: 30, sku: '7003' },
+      { name: 'Eraser', category: 'Writing', unit: 'pcs', cost: 10, price: 20, lowStock: 30, sku: '7004' },
+      { name: 'Sharpener', category: 'Writing', unit: 'pcs', cost: 10, price: 20, lowStock: 30, sku: '7005' },
+      { name: 'Geometry Box', category: 'School', unit: 'set', cost: 250, price: 350, lowStock: 6, sku: '7006' },
+      { name: 'Marker', category: 'Writing', unit: 'pcs', cost: 60, price: 90, lowStock: 15, sku: '7007' },
+      { name: 'Glue Stick', category: 'Office', unit: 'pcs', cost: 40, price: 60, lowStock: 15, sku: '7008' },
+      { name: 'Scissors', category: 'Office', unit: 'pcs', cost: 80, price: 120, lowStock: 10, sku: '7009' },
+      { name: 'File Folder', category: 'Office', unit: 'pcs', cost: 60, price: 100, lowStock: 15, sku: '7010' },
+      { name: 'Stapler', category: 'Office', unit: 'pcs', cost: 250, price: 350, lowStock: 5, sku: '7011' },
+      { name: 'A4 Paper Ream', category: 'Paper', unit: 'ream', cost: 900, price: 1100, lowStock: 5, sku: '7012' },
+    ],
+  },
+  hardware: {
+    label: 'Hardware',
+    products: [
+      { name: 'Claw Hammer', category: 'Tools', unit: 'pcs', cost: 350, price: 500, lowStock: 5, sku: '8001' },
+      { name: 'Screwdriver Set', category: 'Tools', unit: 'set', cost: 450, price: 650, lowStock: 5, sku: '8002' },
+      { name: 'Measuring Tape 5m', category: 'Tools', unit: 'pcs', cost: 200, price: 300, lowStock: 8, sku: '8003' },
+      { name: 'Paint Brush 3in', category: 'Paint', unit: 'pcs', cost: 120, price: 180, lowStock: 10, sku: '8004' },
+      { name: 'Wall Paint 1L', category: 'Paint', unit: 'tin', cost: 900, price: 1200, lowStock: 6, sku: '8005' },
+      { name: 'Door Lock', category: 'Hardware', unit: 'pcs', cost: 600, price: 850, lowStock: 6, sku: '8006' },
+      { name: 'Hinges Pair', category: 'Hardware', unit: 'pair', cost: 150, price: 220, lowStock: 12, sku: '8007' },
+      { name: 'Nails Pack', category: 'Hardware', unit: 'pack', cost: 80, price: 120, lowStock: 15, sku: '8008' },
+      { name: 'Electric Wire Roll', category: 'Electrical', unit: 'roll', cost: 500, price: 700, lowStock: 6, sku: '8009' },
+      { name: 'Switch Board', category: 'Electrical', unit: 'pcs', cost: 250, price: 380, lowStock: 8, sku: '8010' },
+      { name: 'PVC Pipe 6ft', category: 'Plumbing', unit: 'pcs', cost: 300, price: 450, lowStock: 8, sku: '8011' },
+      { name: 'Tool Box', category: 'Tools', unit: 'pcs', cost: 800, price: 1100, lowStock: 3, sku: '8012' },
+    ],
+  },
+  bakery: {
+    label: 'Bakery / Food',
+    products: [
+      { name: 'Bread Large', category: 'Bread', unit: 'pcs', cost: 130, price: 160, lowStock: 10, sku: '9001' },
+      { name: 'Bun Pack', category: 'Bread', unit: 'pack', cost: 80, price: 120, lowStock: 12, sku: '9002' },
+      { name: 'Cake Slice', category: 'Cakes', unit: 'pcs', cost: 120, price: 180, lowStock: 8, sku: '9003' },
+      { name: 'Cookies Pack', category: 'Biscuits', unit: 'pack', cost: 100, price: 150, lowStock: 10, sku: '9004' },
+      { name: 'Rusk Pack', category: 'Biscuits', unit: 'pack', cost: 120, price: 170, lowStock: 10, sku: '9005' },
+      { name: 'Croissant', category: 'Pastry', unit: 'pcs', cost: 150, price: 220, lowStock: 6, sku: '9006' },
+      { name: 'Pizza Base', category: 'Bread', unit: 'pcs', cost: 180, price: 250, lowStock: 5, sku: '9007' },
+      { name: 'Cream Roll', category: 'Pastry', unit: 'pcs', cost: 60, price: 90, lowStock: 12, sku: '9008' },
+      { name: 'Patties', category: 'Snacks', unit: 'pcs', cost: 100, price: 150, lowStock: 10, sku: '9009' },
+      { name: 'Doughnut', category: 'Pastry', unit: 'pcs', cost: 80, price: 120, lowStock: 12, sku: '9010' },
+      { name: 'Birthday Cake 1lb', category: 'Cakes', unit: 'pcs', cost: 900, price: 1200, lowStock: 3, sku: '9011' },
+      { name: 'Sandwich Bread', category: 'Bread', unit: 'pcs', cost: 150, price: 200, lowStock: 8, sku: '9012' },
+    ],
+  },
+  general: { label: 'General Store', products: MART_PRODUCTS },
+  other: { label: 'Other', products: [] },
+};
+
+const DEFAULT_SHOP_TYPE = 'mart';
+
+function shopTypeInfo(type) {
+  return SHOP_TYPES[type] || SHOP_TYPES[DEFAULT_SHOP_TYPE];
+}
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -231,8 +379,9 @@ async function requireAuth(request, env) {
 
 /* ---------------- shop data ---------------- */
 
-function defaultData(shopName, ownerName, email, phone) {
+function defaultData(shopName, ownerName, email, phone, shopType = DEFAULT_SHOP_TYPE) {
   const now = new Date().toISOString();
+  const type = SHOP_TYPES[shopType] ? shopType : DEFAULT_SHOP_TYPE;
   return {
     version: 1,
     settings: {
@@ -245,8 +394,9 @@ function defaultData(shopName, ownerName, email, phone) {
       lowStock: 5,
       receiptNote: 'Thank you for shopping with us!',
       email: email || '',
+      shopType: type,
     },
-    products: COMMON_PRODUCTS.map((item, i) => ({
+    products: shopTypeInfo(type).products.map((item, i) => ({
       id: `seed_${i + 1}`,
       name: item.name,
       sku: item.sku,
@@ -272,19 +422,22 @@ function defaultData(shopName, ownerName, email, phone) {
 
 async function loadShop(env, shopId) {
   return env.DB.prepare(
-    'SELECT id, name, code, email, phone, status, created_at FROM shops WHERE id = ?'
+    'SELECT id, name, code, email, phone, shop_type, status, created_at FROM shops WHERE id = ?'
   )
     .bind(shopId)
     .first();
 }
 
 function shopPayload(row) {
+  const type = row.shop_type || DEFAULT_SHOP_TYPE;
   return {
     id: row.id,
     name: row.name,
     code: row.code,
     email: row.email,
     phone: row.phone || '',
+    shopType: type,
+    shopTypeLabel: shopTypeInfo(type).label,
   };
 }
 
@@ -413,10 +566,14 @@ async function handleRegister(request, env) {
   const phone = normalizePhone(body.phone);
   const password = String(body.password || '');
   const givenEmail = String(body.email || '').trim().toLowerCase();
+  const shopType = String(body.shopType || DEFAULT_SHOP_TYPE).trim().toLowerCase();
   let code = String(body.shopCode || '').trim().toLowerCase();
 
   if (shopName.length < 2 || shopName.length > 60) {
     throw new HttpError(400, 'Shop ka naam 2–60 characters ka hona chahiye');
+  }
+  if (!SHOP_TYPES[shopType]) {
+    throw new HttpError(400, 'Shop category sahi nahi hai — list se ek category chunein');
   }
   if (phone.length < 7 || phone.length > 15) {
     throw new HttpError(400, 'Sahi phone number likhein (misal: 03001234567)');
@@ -480,13 +637,13 @@ async function handleRegister(request, env) {
   const token = randomToken();
   const expires = new Date(Date.now() + CONFIRM_TTL_MS).toISOString();
   const passwordHash = await hashPassword(password);
-  const data = defaultData(shopName, ownerName, email, phone);
+  const data = defaultData(shopName, ownerName, email, phone, shopType);
 
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO shops (id, name, code, email, phone, status, confirm_token, confirm_expires, created_at)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
-    ).bind(shopId, shopName, code, email, phone, token, expires, now),
+      `INSERT INTO shops (id, name, code, email, phone, shop_type, status, confirm_token, confirm_expires, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+    ).bind(shopId, shopName, code, email, phone, shopType, token, expires, now),
     env.DB.prepare(
       'INSERT INTO users (id, shop_id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).bind(userId, shopId, email, ownerName, 'owner', passwordHash, now),
@@ -502,6 +659,7 @@ async function handleRegister(request, env) {
     'Naya shop registration request aayi hai.',
     '',
     `Shop: ${shopName}`,
+    `Category: ${shopTypeInfo(shopType).label}`,
     `Phone: ${phone}`,
     `Code: ${code}`,
     `Time: ${now}`,
@@ -516,6 +674,7 @@ async function handleRegister(request, env) {
     'Neeche diye gaye shop ne mhzaly par account banane ki request bheji hai. Approve karne ke baad hi ye shop login kar sakegi.',
     [
       ['Shop name', shopName],
+      ['Category', shopTypeInfo(shopType).label],
       ['Phone number', phone],
       ['Shop code', code],
       ['Request time', now],
@@ -532,7 +691,14 @@ async function handleRegister(request, env) {
   return json({
     pending: true,
     emailSent: mail.ok,
-    shop: { id: shopId, name: shopName, code, phone },
+    shop: {
+      id: shopId,
+      name: shopName,
+      code,
+      phone,
+      shopType,
+      shopTypeLabel: shopTypeInfo(shopType).label,
+    },
     message: 'Aap ki request bhej di gayi hai. Approval ke baad login kar sakte hain.',
   });
 }
@@ -560,7 +726,7 @@ async function handleConfirm(request, env) {
   }
 
   const shop = await env.DB.prepare(
-    'SELECT id, name, code, phone, status, confirm_token, confirm_expires FROM shops WHERE confirm_token = ?'
+    'SELECT id, name, code, phone, shop_type, status, confirm_token, confirm_expires FROM shops WHERE confirm_token = ?'
   )
     .bind(token)
     .first();
@@ -623,6 +789,7 @@ async function handleConfirm(request, env) {
     confirmPage({
       title: 'Shop approved! ✅',
       body: `Shop <b>${escHtml(shop.name)}</b> (${escHtml(shop.phone || '')}) ab approve ho chuki hai.<br><br>
+      Category: <b>${escHtml(shopTypeInfo(shop.shop_type).label)}</b><br><br>
       Ab ye shop apne <b>phone number</b> aur password se login kar sakti hai.<br><br>
       <a href="${escHtml(loginUrl)}" style="color:#0f766e;font-weight:700">${escHtml(loginUrl)}</a>`,
     })
@@ -637,7 +804,7 @@ async function handleAdmin(request, env) {
   }
 
   const rows = await env.DB.prepare(
-    'SELECT id, name, code, phone, created_at, confirm_token, confirm_expires FROM shops WHERE status = ? ORDER BY created_at DESC'
+    'SELECT id, name, code, phone, shop_type, created_at, confirm_token, confirm_expires FROM shops WHERE status = ? ORDER BY created_at DESC'
   )
     .bind('pending')
     .all();
@@ -649,7 +816,7 @@ async function handleAdmin(request, env) {
           const approve = `/api/confirm?token=${encodeURIComponent(s.confirm_token || '')}&action=approve`;
           const reject = `/api/confirm?token=${encodeURIComponent(s.confirm_token || '')}&action=reject`;
           return `<tr>
-            <td style="padding:10px;border-bottom:1px solid #e2e8f0"><b>${escHtml(s.name)}</b><br><span style="font-size:11px;color:#64748b">${escHtml(s.code)}</span></td>
+            <td style="padding:10px;border-bottom:1px solid #e2e8f0"><b>${escHtml(s.name)}</b><br><span style="font-size:11px;color:#64748b">${escHtml(s.code)} · ${escHtml(shopTypeInfo(s.shop_type).label)}</span></td>
             <td style="padding:10px;border-bottom:1px solid #e2e8f0">${escHtml(s.phone || '—')}<br><span style="font-size:11px;color:#64748b">${escHtml(s.created_at)}</span></td>
             <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap">
               <a href="${approve}" style="display:inline-block;padding:7px 12px;border-radius:7px;background:#0f766e;color:#fff;text-decoration:none;font-size:12px;font-weight:700">Approve</a>
@@ -688,7 +855,7 @@ async function handleLogin(request, env) {
   const row = await env.DB.prepare(
     `SELECT u.id AS uid, u.shop_id AS sid, u.email AS email, u.name AS user_name, u.password_hash,
             s.name AS shop_name, s.code AS shop_code, s.email AS shop_email, s.phone AS shop_phone,
-            s.status AS shop_status
+            s.shop_type AS shop_type, s.status AS shop_status
      FROM users u JOIN shops s ON s.id = u.shop_id
      WHERE u.email = ? OR s.code = ? OR s.phone = ?
      LIMIT 1`
@@ -708,9 +875,10 @@ async function handleLogin(request, env) {
   if (!ok) throw new HttpError(401, 'Password galat hai');
 
   const dataRow = await env.DB.prepare('SELECT data FROM shop_data WHERE shop_id = ?').bind(row.sid).first();
+  const shopType = row.shop_type || DEFAULT_SHOP_TYPE;
   const data = dataRow?.data
     ? JSON.parse(dataRow.data)
-    : defaultData(row.shop_name, row.user_name, row.email, row.shop_phone);
+    : defaultData(row.shop_name, row.user_name, row.email, row.shop_phone, shopType);
 
   const token = await signToken(
     { uid: row.uid, sid: row.sid, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL },
@@ -725,6 +893,8 @@ async function handleLogin(request, env) {
       code: row.shop_code,
       email: row.shop_email,
       phone: row.shop_phone || '',
+      shopType,
+      shopTypeLabel: shopTypeInfo(shopType).label,
     },
     data,
   });
@@ -738,7 +908,7 @@ async function handleBootstrap(request, env) {
   const dataRow = await env.DB.prepare('SELECT data, updated_at FROM shop_data WHERE shop_id = ?').bind(auth.sid).first();
   const data = dataRow?.data
     ? JSON.parse(dataRow.data)
-    : defaultData(shop.name, '', shop.email, shop.phone);
+    : defaultData(shop.name, '', shop.email, shop.phone, shop.shop_type);
   return json({
     shop: shopPayload(shop),
     data,
@@ -763,6 +933,7 @@ async function handleSaveData(request, env) {
   const now = new Date().toISOString();
   const shopName = String(data.settings?.shopName || '').trim().slice(0, 60);
   const phone = normalizePhone(data.settings?.phone || '').slice(0, 15);
+  const shopType = String(data.settings?.shopType || '').trim().toLowerCase();
 
   const statements = [
     env.DB.prepare(
@@ -779,6 +950,9 @@ async function handleSaveData(request, env) {
       .first();
     if (taken) throw new HttpError(409, 'Ye phone number pehle se kisi aur shop ke paas hai');
     statements.push(env.DB.prepare('UPDATE shops SET phone = ? WHERE id = ?').bind(phone, auth.sid));
+  }
+  if (SHOP_TYPES[shopType]) {
+    statements.push(env.DB.prepare('UPDATE shops SET shop_type = ? WHERE id = ?').bind(shopType, auth.sid));
   }
   await env.DB.batch(statements);
 
