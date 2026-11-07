@@ -10,7 +10,7 @@ import {
   getStoredShop, isDemo, clearSession, deleteAccount, changePassword,
 } from '../api.js';
 import {
-  icon, esc, initials, toast, refresh, confirmDialog, downloadFile, emptyState,
+  icon, esc, initials, toast, confirmDialog, downloadFile, emptyState,
   openModal, closeModal,
 } from '../ui.js';
 

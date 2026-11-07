@@ -35,6 +35,10 @@ export function clearSession() {
   localStorage.removeItem(SHOP_KEY);
   localStorage.removeItem(DEMO_KEY);
 }
+export function markSynced() { setStatus('idle'); }
+export async function deleteAccount() {
+  return request('/api/account', { method: 'DELETE' });
+}
 
 async function request(path, { method = 'GET', body, auth = true } = {}) {
   const headers = {};
