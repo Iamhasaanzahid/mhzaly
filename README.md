@@ -61,6 +61,26 @@ You can log in with **your phone number, your shop code, or your email** plus th
 
 ---
 
+## Owner panel & subscriptions
+
+The owner panel is at **https://mhzaly.pages.dev/owner.html** and is only for the mhzaly owner
+account (**mhzcyb@gmail.com**).
+
+- **Trial:** every newly approved shop starts with a **14-day free trial**.
+- **Plans:** Trial, Monthly (30 days), Quarterly (90 days), Annual (365 days) and Lifetime.
+- **Payments:** the owner can record the amount, method (Cash / Bank / JazzCash / Easypaisa /
+  Other) and a note for each subscription payment. Payment history is kept per shop.
+- **Block / unblock:** the owner can temporarily block a shop that has not paid. A blocked or
+  expired shop cannot log in until the owner renews or unblocks it. Shop data is not deleted.
+- **Approve / reject:** pending shop requests can be approved or rejected directly from the
+  owner panel.
+- **Change password:** the owner can change the owner password from the panel.
+
+> The owner account password should be changed after the first login. Owner login is separate
+> from shop logins; a shop account can never access the owner panel.
+
+---
+
 ## Accounts, data & sync
 
 - Each shop has a separate account and a separate database row. Shops cannot see each other's data.
@@ -143,7 +163,10 @@ js/
     customers.js, suppliers.js, expenses.js, reports.js, settings.js
 server/
   worker.js     # Cloudflare Worker API
-  schema.sql    # D1 schema (shops, users, shop_data)
+  schema.sql    # D1 schema (shops, users, shop_data, admins, subscription_payments)
+owner.html      # owner panel (subscriptions & shop management)
+js/owner.js     # owner panel client
+css/owner.css   # owner panel styles
 sw.js
 manifest.json
 ```
@@ -154,12 +177,17 @@ manifest.json
 | --- | --- | --- |
 | `GET` | `/api/health` | Health check |
 | `POST` | `/api/register` | Create shop + owner account |
-| `POST` | `/api/login` | Login with email or shop code |
+| `POST` | `/api/login` | Shop login with phone, email or shop code |
 | `GET` | `/api/bootstrap` | Load the logged-in shop's data |
 | `PUT` | `/api/data` | Save shop data |
 | `GET` | `/api/shop?code=` | Public shop name for a branded login page |
-| `POST` | `/api/password` | Change password |
+| `POST` | `/api/password` | Change shop password |
 | `DELETE` | `/api/account` | Delete shop account and data |
+| `POST` | `/api/owner/login` | Owner login (mhzcyb@gmail.com) |
+| `GET` | `/api/owner/overview` | Owner stats + all shops |
+| `POST` | `/api/owner/shop` | Set plan, extend, block, unblock, approve or reject |
+| `GET` | `/api/owner/payments?shopId=` | Payment history for a shop |
+| `POST` | `/api/owner/password` | Change owner password |
 
 ---
 

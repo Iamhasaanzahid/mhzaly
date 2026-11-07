@@ -1,16 +1,19 @@
 /* Service worker — offline support (network-first, cache fallback) */
-const CACHE = 'mhzaly-v3';
+const CACHE = 'mhzaly-v4';
 const ASSETS = [
   './',
   './index.html',
+  './owner.html',
   './manifest.json',
   './icon.svg',
   './css/styles.css',
+  './css/owner.css',
   './js/app.js',
   './js/api.js',
   './js/db.js',
   './js/ui.js',
   './js/receipt.js',
+  './js/owner.js',
   './js/pages/auth.js',
   './js/pages/dashboard.js',
   './js/pages/pos.js',

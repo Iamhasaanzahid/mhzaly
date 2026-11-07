@@ -118,6 +118,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
           <button type="button" class="auth-demo" id="demoBtn">${icon('sparkle')} Try a demo shop — no account needed</button>
 
           <p class="auth-legal">Secure login · Aap ka data sirf aap ke shop account ke saath cloud mein save hota hai.</p>
+          <p class="auth-legal"><a href="./owner.html">Owner login</a></p>
         </div>
         <div class="auth-bottom-note">mhzaly · Shop manager for every dukaan</div>
       </section>

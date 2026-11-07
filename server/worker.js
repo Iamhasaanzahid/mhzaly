@@ -169,9 +169,69 @@ const SHOP_TYPES = {
 };
 
 const DEFAULT_SHOP_TYPE = 'mart';
+const DEFAULT_PLAN = 'trial';
+const TRIAL_DAYS = 14;
+const PLAN_DAYS = {
+  trial: 14,
+  monthly: 30,
+  quarterly: 90,
+  annual: 365,
+  lifetime: null,
+};
+const PLAN_LABELS = {
+  trial: 'Trial',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  annual: 'Annual',
+  lifetime: 'Lifetime',
+};
 
 function shopTypeInfo(type) {
   return SHOP_TYPES[type] || SHOP_TYPES[DEFAULT_SHOP_TYPE];
+}
+
+function planInfo(plan) {
+  const key = Object.prototype.hasOwnProperty.call(PLAN_DAYS, plan) ? plan : DEFAULT_PLAN;
+  return { key, label: PLAN_LABELS[key], days: PLAN_DAYS[key] };
+}
+
+function addDays(base, days) {
+  return new Date(base.getTime() + days * 86400000).toISOString();
+}
+
+function daysLeft(end) {
+  if (!end) return null;
+  const ms = new Date(end).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / 86400000));
+}
+
+/** Can this shop log in and sync right now? */
+function billingAccess(shop) {
+  if (shop.status !== 'active') {
+    return {
+      ok: false,
+      code: 'pending',
+      message: 'Aap ka account abhi approve nahi hua. Owner ke email par approval request bheji gayi hai — approve hone ke baad login karein.',
+    };
+  }
+  if (shop.billing_status === 'blocked') {
+    return {
+      ok: false,
+      code: 'blocked',
+      message: 'Aap ka account temporarily band hai — mhzaly owner se rabta karein.',
+    };
+  }
+  const plan = shop.plan || DEFAULT_PLAN;
+  if (plan === 'lifetime') return { ok: true };
+  if (!shop.subscription_end) return { ok: true };
+  if (new Date(shop.subscription_end).getTime() < Date.now()) {
+    return {
+      ok: false,
+      code: 'expired',
+      message: 'Aap ka trial ya subscription khatam ho gaya hai — owner se renew karwayein.',
+    };
+  }
+  return { ok: true };
 }
 
 class HttpError extends Error {
@@ -422,7 +482,9 @@ function defaultData(shopName, ownerName, email, phone, shopType = DEFAULT_SHOP_
 
 async function loadShop(env, shopId) {
   return env.DB.prepare(
-    'SELECT id, name, code, email, phone, shop_type, status, created_at FROM shops WHERE id = ?'
+    `SELECT id, name, code, email, phone, shop_type, status, plan, billing_status,
+            subscription_start, subscription_end, created_at
+     FROM shops WHERE id = ?`
   )
     .bind(shopId)
     .first();
@@ -430,6 +492,7 @@ async function loadShop(env, shopId) {
 
 function shopPayload(row) {
   const type = row.shop_type || DEFAULT_SHOP_TYPE;
+  const plan = row.plan || DEFAULT_PLAN;
   return {
     id: row.id,
     name: row.name,
@@ -438,6 +501,48 @@ function shopPayload(row) {
     phone: row.phone || '',
     shopType: type,
     shopTypeLabel: shopTypeInfo(type).label,
+    plan,
+    planLabel: PLAN_LABELS[plan] || plan,
+    billingStatus: row.billing_status || (plan === 'trial' ? 'trial' : 'active'),
+    subscriptionStart: row.subscription_start || null,
+    subscriptionEnd: row.subscription_end || null,
+    daysLeft: daysLeft(row.subscription_end),
+  };
+}
+
+function ownerShopRow(row) {
+  const type = row.shop_type || DEFAULT_SHOP_TYPE;
+  const plan = row.plan || DEFAULT_PLAN;
+  const end = row.subscription_end || null;
+  let billingStatus = row.billing_status || (plan === 'trial' ? 'trial' : 'active');
+  if (
+    row.status === 'active' &&
+    billingStatus !== 'blocked' &&
+    end &&
+    new Date(end).getTime() < Date.now()
+  ) {
+    billingStatus = 'expired';
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    email: row.email,
+    phone: row.phone || '',
+    shopType: type,
+    shopTypeLabel: shopTypeInfo(type).label,
+    status: row.status,
+    plan,
+    planLabel: PLAN_LABELS[plan] || plan,
+    billingStatus,
+    subscriptionStart: row.subscription_start || null,
+    subscriptionEnd: end,
+    daysLeft: daysLeft(end),
+    blockedAt: row.blocked_at || null,
+    blockReason: row.block_reason || '',
+    lastPaymentAt: row.last_payment_at || null,
+    lastPaymentAmount: row.last_payment_amount ?? null,
+    createdAt: row.created_at,
   };
 }
 
@@ -605,6 +710,7 @@ async function handleRegister(request, env) {
       new Date(phoneRow.confirm_expires).getTime() < Date.now();
     if (expired) {
       await env.DB.batch([
+        env.DB.prepare('DELETE FROM subscription_payments WHERE shop_id = ?').bind(phoneRow.id),
         env.DB.prepare('DELETE FROM shop_data WHERE shop_id = ?').bind(phoneRow.id),
         env.DB.prepare('DELETE FROM users WHERE shop_id = ?').bind(phoneRow.id),
         env.DB.prepare('DELETE FROM shops WHERE id = ?').bind(phoneRow.id),
@@ -641,8 +747,9 @@ async function handleRegister(request, env) {
 
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO shops (id, name, code, email, phone, shop_type, status, confirm_token, confirm_expires, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+      `INSERT INTO shops (id, name, code, email, phone, shop_type, plan, billing_status,
+                          subscription_start, subscription_end, status, confirm_token, confirm_expires, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'trial', 'trial', NULL, NULL, 'pending', ?, ?, ?)`
     ).bind(shopId, shopName, code, email, phone, shopType, token, expires, now),
     env.DB.prepare(
       'INSERT INTO users (id, shop_id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -764,6 +871,7 @@ async function handleConfirm(request, env) {
 
   if (action === 'reject') {
     await env.DB.batch([
+      env.DB.prepare('DELETE FROM subscription_payments WHERE shop_id = ?').bind(shop.id),
       env.DB.prepare('DELETE FROM shop_data WHERE shop_id = ?').bind(shop.id),
       env.DB.prepare('DELETE FROM users WHERE shop_id = ?').bind(shop.id),
       env.DB.prepare('DELETE FROM shops WHERE id = ?').bind(shop.id),
@@ -777,11 +885,18 @@ async function handleConfirm(request, env) {
     );
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const trialEnd = addDays(now, TRIAL_DAYS);
   await env.DB.prepare(
-    "UPDATE shops SET status = 'active', confirm_token = NULL, confirm_expires = NULL, approved_at = ? WHERE id = ?"
+    `UPDATE shops SET status = 'active', confirm_token = NULL, confirm_expires = NULL, approved_at = ?,
+       plan = COALESCE(plan, 'trial'),
+       billing_status = COALESCE(billing_status, 'trial'),
+       subscription_start = COALESCE(subscription_start, ?),
+       subscription_end = COALESCE(subscription_end, ?)
+     WHERE id = ?`
   )
-    .bind(now, shop.id)
+    .bind(nowIso, nowIso, trialEnd, shop.id)
     .run();
 
   const loginUrl = `${PUBLIC_APP_URL}?shop=${encodeURIComponent(shop.code)}`;
@@ -843,6 +958,248 @@ async function handleAdmin(request, env) {
     </body></html>`);
 }
 
+/* ---------------- owner panel ---------------- */
+
+async function requireOwner(request, env) {
+  const auth = await requireAuth(request, env);
+  if (auth.role !== 'owner' || !auth.aid) {
+    throw new HttpError(403, 'Owner access required');
+  }
+  return auth;
+}
+
+async function handleOwnerLogin(request, env) {
+  const body = await readJson(request);
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!email || !password) throw new HttpError(400, 'Email aur password likhein');
+
+  const row = await env.DB.prepare(
+    'SELECT id, email, name, password_hash FROM admins WHERE email = ?'
+  )
+    .bind(email)
+    .first();
+  if (!row) throw new HttpError(401, 'Owner account nahi mila');
+  const ok = await verifyPassword(password, row.password_hash);
+  if (!ok) throw new HttpError(401, 'Password galat hai');
+
+  const token = await signToken(
+    { aid: row.id, role: 'owner', exp: Math.floor(Date.now() / 1000) + TOKEN_TTL },
+    env.AUTH_SECRET
+  );
+  return json({
+    token,
+    owner: { id: row.id, email: row.email, name: row.name || 'Owner' },
+  });
+}
+
+async function handleOwnerOverview(request, env) {
+  await requireOwner(request, env);
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  await env.DB.prepare(
+    `UPDATE shops SET billing_status = 'expired'
+     WHERE status = 'active' AND billing_status IN ('trial', 'active')
+       AND subscription_end IS NOT NULL AND subscription_end < ?`
+  )
+    .bind(nowIso)
+    .run()
+    .catch(() => {});
+
+  const rows = await env.DB.prepare(
+    `SELECT id, name, code, email, phone, shop_type, status, plan, billing_status,
+            subscription_start, subscription_end, blocked_at, block_reason,
+            last_payment_at, last_payment_amount, created_at
+     FROM shops ORDER BY created_at DESC`
+  ).all();
+
+  const shops = (rows.results || []).map(ownerShopRow);
+  const stats = { total: shops.length, active: 0, trial: 0, expired: 0, blocked: 0, pending: 0 };
+  for (const s of shops) {
+    if (s.status === 'pending') stats.pending += 1;
+    else if (s.billingStatus === 'blocked') stats.blocked += 1;
+    else if (s.billingStatus === 'expired') stats.expired += 1;
+    else if (s.plan === 'trial' || s.billingStatus === 'trial') stats.trial += 1;
+    else stats.active += 1;
+  }
+
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const pay = await env.DB.prepare(
+    'SELECT COALESCE(SUM(amount), 0) AS total FROM subscription_payments WHERE created_at >= ?'
+  )
+    .bind(monthStart.toISOString())
+    .first();
+  stats.revenueThisMonth = Number(pay?.total || 0);
+
+  return json({ stats, shops });
+}
+
+async function handleOwnerShopAction(request, env) {
+  const auth = await requireOwner(request, env);
+  const body = await readJson(request);
+  const shopId = String(body.shopId || '').trim();
+  const action = String(body.action || '').trim().toLowerCase();
+  if (!shopId) throw new HttpError(400, 'Shop ID required');
+  if (!action) throw new HttpError(400, 'Action required');
+
+  const shop = await env.DB.prepare('SELECT * FROM shops WHERE id = ?').bind(shopId).first();
+  if (!shop) throw new HttpError(404, 'Shop not found');
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  if (action === 'approve') {
+    const trialEnd = addDays(now, TRIAL_DAYS);
+    await env.DB.prepare(
+      `UPDATE shops SET status = 'active', confirm_token = NULL, confirm_expires = NULL, approved_at = ?,
+         plan = COALESCE(plan, 'trial'),
+         billing_status = COALESCE(billing_status, 'trial'),
+         subscription_start = COALESCE(subscription_start, ?),
+         subscription_end = COALESCE(subscription_end, ?)
+       WHERE id = ?`
+    )
+      .bind(nowIso, nowIso, trialEnd, shopId)
+      .run();
+    return json({ ok: true });
+  }
+
+  if (action === 'reject') {
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM subscription_payments WHERE shop_id = ?').bind(shopId),
+      env.DB.prepare('DELETE FROM shop_data WHERE shop_id = ?').bind(shopId),
+      env.DB.prepare('DELETE FROM users WHERE shop_id = ?').bind(shopId),
+      env.DB.prepare('DELETE FROM shops WHERE id = ?').bind(shopId),
+    ]);
+    return json({ ok: true });
+  }
+
+  if (action === 'block') {
+    const reason = String(body.reason || '').trim().slice(0, 200);
+    await env.DB.prepare(
+      "UPDATE shops SET billing_status = 'blocked', blocked_at = ?, block_reason = ? WHERE id = ?"
+    )
+      .bind(nowIso, reason || null, shopId)
+      .run();
+    return json({ ok: true });
+  }
+
+  if (action === 'unblock') {
+    const plan = shop.plan || DEFAULT_PLAN;
+    const info = planInfo(plan);
+    let end = shop.subscription_end || null;
+    if (!end || new Date(end).getTime() < now.getTime()) {
+      end = info.days === null ? null : addDays(now, info.days);
+    }
+    await env.DB.prepare(
+      `UPDATE shops SET billing_status = ?, subscription_start = ?, subscription_end = ?,
+         blocked_at = NULL, block_reason = NULL
+       WHERE id = ?`
+    )
+      .bind(plan === 'trial' ? 'trial' : 'active', shop.subscription_start || nowIso, end, shopId)
+      .run();
+    return json({ ok: true });
+  }
+
+  if (action === 'set_plan' || action === 'extend') {
+    const plan = String(body.plan || (action === 'extend' ? shop.plan : 'monthly'))
+      .trim()
+      .toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(PLAN_DAYS, plan)) {
+      throw new HttpError(400, 'Plan sahi nahi hai');
+    }
+    const info = planInfo(plan);
+    const amount = Math.max(0, Number(body.amount) || 0);
+    const method = String(body.method || '').trim().slice(0, 40);
+    const note = String(body.note || '').trim().slice(0, 200);
+
+    let start = nowIso;
+    let end = info.days === null ? null : addDays(now, info.days);
+    if (action === 'extend') {
+      const currentEnd = shop.subscription_end ? new Date(shop.subscription_end) : null;
+      const base = currentEnd && currentEnd.getTime() > now.getTime() ? currentEnd : now;
+      start = shop.subscription_start || nowIso;
+      end = info.days === null ? null : addDays(base, info.days);
+    }
+
+    const lastPaymentAt = amount > 0 ? nowIso : shop.last_payment_at || null;
+    const lastPaymentAmount = amount > 0 ? amount : shop.last_payment_amount ?? null;
+
+    await env.DB.prepare(
+      `UPDATE shops SET plan = ?, billing_status = ?, subscription_start = ?, subscription_end = ?,
+         blocked_at = NULL, block_reason = NULL, last_payment_at = ?, last_payment_amount = ?
+       WHERE id = ?`
+    )
+      .bind(
+        plan,
+        plan === 'trial' ? 'trial' : 'active',
+        start,
+        end,
+        lastPaymentAt,
+        lastPaymentAmount,
+        shopId
+      )
+      .run();
+
+    if (amount > 0 || plan !== 'trial') {
+      await env.DB.prepare(
+        `INSERT INTO subscription_payments
+           (id, shop_id, amount, plan, period_start, period_end, method, note, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          randomId('pay'),
+          shopId,
+          amount,
+          plan,
+          start,
+          end,
+          method,
+          note,
+          nowIso,
+          auth.aid
+        )
+        .run();
+    }
+    return json({ ok: true });
+  }
+
+  throw new HttpError(400, 'Unknown action');
+}
+
+async function handleOwnerPayments(request, env) {
+  await requireOwner(request, env);
+  const url = new URL(request.url);
+  const shopId = String(url.searchParams.get('shopId') || '').trim();
+  if (!shopId) throw new HttpError(400, 'Shop ID required');
+  const rows = await env.DB.prepare(
+    `SELECT id, amount, plan, period_start, period_end, method, note, created_at
+     FROM subscription_payments WHERE shop_id = ? ORDER BY created_at DESC LIMIT 100`
+  )
+    .bind(shopId)
+    .all();
+  return json({ payments: rows.results || [] });
+}
+
+async function handleOwnerPassword(request, env) {
+  const auth = await requireOwner(request, env);
+  const body = await readJson(request);
+  const current = String(body.currentPassword || '');
+  const next = String(body.newPassword || '');
+  if (next.length < 8) throw new HttpError(400, 'New password must be at least 8 characters');
+  const row = await env.DB.prepare('SELECT password_hash FROM admins WHERE id = ?')
+    .bind(auth.aid)
+    .first();
+  if (!row) throw new HttpError(404, 'Owner account not found');
+  const ok = await verifyPassword(current, row.password_hash);
+  if (!ok) throw new HttpError(401, 'Current password is incorrect');
+  const hash = await hashPassword(next);
+  await env.DB.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').bind(hash, auth.aid).run();
+  return json({ ok: true });
+}
+
 async function handleLogin(request, env) {
   const body = await readJson(request);
   const identifierRaw = String(body.identifier || '').trim();
@@ -855,7 +1212,9 @@ async function handleLogin(request, env) {
   const row = await env.DB.prepare(
     `SELECT u.id AS uid, u.shop_id AS sid, u.email AS email, u.name AS user_name, u.password_hash,
             s.name AS shop_name, s.code AS shop_code, s.email AS shop_email, s.phone AS shop_phone,
-            s.shop_type AS shop_type, s.status AS shop_status
+            s.shop_type AS shop_type, s.status AS shop_status, s.plan AS plan,
+            s.billing_status AS billing_status, s.subscription_start AS subscription_start,
+            s.subscription_end AS subscription_end
      FROM users u JOIN shops s ON s.id = u.shop_id
      WHERE u.email = ? OR s.code = ? OR s.phone = ?
      LIMIT 1`
@@ -864,11 +1223,21 @@ async function handleLogin(request, env) {
     .first();
 
   if (!row) throw new HttpError(401, 'Is phone number / shop code ka koi account nahi mila');
-  if (row.shop_status !== 'active') {
-    throw new HttpError(
-      403,
-      'Aap ka account abhi approve nahi hua. Owner ke email par approval request bheji gayi hai — approve hone ke baad login karein.'
-    );
+
+  const access = billingAccess({
+    status: row.shop_status,
+    billing_status: row.billing_status,
+    plan: row.plan,
+    subscription_end: row.subscription_end,
+  });
+  if (!access.ok) {
+    if (access.code === 'expired') {
+      await env.DB.prepare("UPDATE shops SET billing_status = 'expired' WHERE id = ?")
+        .bind(row.sid)
+        .run()
+        .catch(() => {});
+    }
+    throw new HttpError(403, access.message);
   }
 
   const ok = await verifyPassword(password, row.password_hash);
@@ -887,15 +1256,18 @@ async function handleLogin(request, env) {
 
   return json({
     token,
-    shop: {
+    shop: shopPayload({
       id: row.sid,
       name: row.shop_name,
       code: row.shop_code,
       email: row.shop_email,
-      phone: row.shop_phone || '',
-      shopType,
-      shopTypeLabel: shopTypeInfo(shopType).label,
-    },
+      phone: row.shop_phone,
+      shop_type: row.shop_type,
+      plan: row.plan,
+      billing_status: row.billing_status,
+      subscription_start: row.subscription_start,
+      subscription_end: row.subscription_end,
+    }),
     data,
   });
 }
@@ -904,7 +1276,16 @@ async function handleBootstrap(request, env) {
   const auth = await requireAuth(request, env);
   const shop = await loadShop(env, auth.sid);
   if (!shop) throw new HttpError(401, 'Shop not found');
-  if (shop.status !== 'active') throw new HttpError(403, 'Shop abhi approve nahi hui');
+  const access = billingAccess(shop);
+  if (!access.ok) {
+    if (access.code === 'expired') {
+      await env.DB.prepare("UPDATE shops SET billing_status = 'expired' WHERE id = ?")
+        .bind(auth.sid)
+        .run()
+        .catch(() => {});
+    }
+    throw new HttpError(403, access.message);
+  }
   const dataRow = await env.DB.prepare('SELECT data, updated_at FROM shop_data WHERE shop_id = ?').bind(auth.sid).first();
   const data = dataRow?.data
     ? JSON.parse(dataRow.data)
@@ -920,7 +1301,16 @@ async function handleSaveData(request, env) {
   const auth = await requireAuth(request, env);
   const shop = await loadShop(env, auth.sid);
   if (!shop) throw new HttpError(401, 'Shop not found');
-  if (shop.status !== 'active') throw new HttpError(403, 'Shop abhi approve nahi hui');
+  const access = billingAccess(shop);
+  if (!access.ok) {
+    if (access.code === 'expired') {
+      await env.DB.prepare("UPDATE shops SET billing_status = 'expired' WHERE id = ?")
+        .bind(auth.sid)
+        .run()
+        .catch(() => {});
+    }
+    throw new HttpError(403, access.message);
+  }
 
   const body = await readJson(request, MAX_DATA_BYTES + 200000);
   const data = body.data;
@@ -992,6 +1382,7 @@ async function handleChangePassword(request, env) {
 async function handleAccountDelete(request, env) {
   const auth = await requireAuth(request, env);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM subscription_payments WHERE shop_id = ?').bind(auth.sid),
     env.DB.prepare('DELETE FROM shop_data WHERE shop_id = ?').bind(auth.sid),
     env.DB.prepare('DELETE FROM users WHERE shop_id = ?').bind(auth.sid),
     env.DB.prepare('DELETE FROM shops WHERE id = ?').bind(auth.sid),
@@ -1021,6 +1412,16 @@ export default {
         response = await handleConfirm(request, env);
       } else if (path === '/api/admin' && request.method === 'GET') {
         response = await handleAdmin(request, env);
+      } else if (path === '/api/owner/login' && request.method === 'POST') {
+        response = await handleOwnerLogin(request, env);
+      } else if (path === '/api/owner/overview' && request.method === 'GET') {
+        response = await handleOwnerOverview(request, env);
+      } else if (path === '/api/owner/shop' && request.method === 'POST') {
+        response = await handleOwnerShopAction(request, env);
+      } else if (path === '/api/owner/payments' && request.method === 'GET') {
+        response = await handleOwnerPayments(request, env);
+      } else if (path === '/api/owner/password' && request.method === 'POST') {
+        response = await handleOwnerPassword(request, env);
       } else if (path === '/api/bootstrap' && request.method === 'GET') {
         response = await handleBootstrap(request, env);
       } else if (path === '/api/data' && request.method === 'PUT') {
