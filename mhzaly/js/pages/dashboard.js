@@ -35,6 +35,16 @@ export function render(root) {
       <div><span class="lbl">Profit</span><b class="val">Rs ${esc(Number(profit || 0).toLocaleString())}</b></div>
       <div><span class="lbl">Products</span><b class="val">${esc(db.products.length)}</b></div>
       <div><span class="lbl">Low Stock</span><b class="val">${esc(low.length)}</b></div>
+      <div><span class="lbl">Plan</span><b class="val">${esc(db.settings._planLabel || '—')}</b></div>
+      <div><span class="lbl">Days Left</span><b class="val">${esc(db.settings._daysLeft == null ? '—' : db.settings._daysLeft + ' din')}</b></div>
+    </div>
+
+    <div id="dashboardAlert" class="alert-box mt" style="${dashboardAlertStyle()}">
+      ${icon('alert')}
+      <div>
+        <div style="font-weight:800">${dashboardAlertTitle()}</div>
+        <div style="font-size:12.5px">${dashboardAlertMessage()}</div>
+      </div>
     </div>
 
     <div class="grid k2 mt">
@@ -52,4 +62,34 @@ export function render(root) {
         </div>
       </div>
     </div>`;
+
+    // Auto-dismiss alert after 10 seconds
+    setTimeout(() => {
+      const el = document.getElementById('dashboardAlert');
+      if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }
+    }, 10000);
+}
+
+function dashboardAlertStyle() {
+  const status = db.settings._billingStatus || 'active';
+  if (status === 'trial') return 'background:#fffbeb;border-color:#f59e0b;color:#92400e';
+  if (status === 'expired') return 'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
+  if (status === 'blocked') return 'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
+  return 'background:#eff6ff;border-color:#bfdbfe;color:#1e40af';
+}
+
+function dashboardAlertTitle() {
+  const status = db.settings._billingStatus || 'active';
+  if (status === 'trial') return 'Trial Plan Active';
+  if (status === 'expired') return 'Plan Expired';
+  if (status === 'blocked') return 'Account Blocked';
+  return 'Welcome to mhzaly';
+}
+
+function dashboardAlertMessage() {
+  const status = db.settings._billingStatus || 'active';
+  if (status === 'trial') return `Aap ka trial ${db.settings._daysLeft} din baad khatam ho jayega. Owner se plan renew karwayein.`;
+  if (status === 'expired') return 'Aap ka plan khatam ho gaya hai. Owner se rabta karein.';
+  if (status === 'blocked') return 'Aap ka account temporarily block hai — owner se rabta karein.';
+  return 'Aap ka shop active hai. Billing shuru karein!';
 }

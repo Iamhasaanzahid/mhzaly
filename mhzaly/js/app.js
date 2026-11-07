@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { db, lowStockProducts, totalReceivable, totalSales, totalProfit, configureShop, hydrate } from './db.js';
-import { icon, esc, initials, navigate, toast, openModal, closeModal } from './ui.js';
+import { icon, esc, initials, toast, openModal, closeModal } from './ui.js';
 import {
   getToken, getStoredShop, isDemo, bootstrap, clearSession,
   changePassword, onSyncStatus, getSyncStatus, markSynced,
@@ -21,7 +21,7 @@ import * as reports from './pages/reports.js';
 import * as settings from './pages/settings.js';
 
 const PAGES = {
-  dashboard, pos, products, sales, purchases, customers, suppliers, expenses, reports, settings,
+  dashboard, login: authPage, pos, products, sales, purchases, customers, suppliers, expenses, reports, settings,
 };
 
 const PAGE_TITLES = {
@@ -47,6 +47,13 @@ export function init() {
       configureShop({ shopId: stored.id });
       bootstrap().then((res) => {
         hydrate(res.data);
+        if (res.shop) {
+          db.settings._plan = res.shop.plan;
+          db.settings._planLabel = res.shop.planLabel;
+          db.settings._daysLeft = res.shop.daysLeft;
+          db.settings._billingStatus = res.shop.billingStatus;
+          save();
+        }
         markSynced();
         renderShell();
         navigate('#/dashboard');
@@ -319,3 +326,5 @@ window.addEventListener('session:expired', () => {
 });
 
 export { shell, navigate };
+
+init();

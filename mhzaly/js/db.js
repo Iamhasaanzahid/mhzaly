@@ -136,6 +136,11 @@ export function save() {
   if (syncEnabled) scheduleSync(JSON.stringify(db));
 }
 
+export async function loadSampleData() {
+  seedCommonProducts();
+  return db;
+}
+
 export function seedCommonProducts() {
   const existing = new Set(db.products.map((p) => String(p.name || '').toLowerCase()));
   const now = new Date().toISOString();

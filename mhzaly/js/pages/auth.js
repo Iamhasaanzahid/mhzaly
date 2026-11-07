@@ -70,9 +70,10 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
               <label>Phone number, email or shop code</label>
               <input class="input" name="identifier" id="loginIdentifier" required placeholder="03xx-xxxxxxx or shop code" value="${esc(shopCode)}" autocomplete="username" />
             </div>
-            <div class="field" style="margin-top:12px">
+            <div class="field" style="margin-top:12px;position:relative">
               <label>Password</label>
-              <input class="input" name="password" type="password" required minlength="8" placeholder="Your password" autocomplete="current-password" />
+              <input class="input" name="password" id="loginPassword" type="password" required minlength="8" placeholder="Your password" autocomplete="current-password" style="padding-right:44px" />
+              <button type="button" class="toggle-password" id="toggleLoginPassword" aria-label="Show password">${icon('eye')}</button>
             </div>
             <button class="btn btn-primary btn-lg btn-block" style="margin-top:16px" id="loginBtn" type="submit">Login</button>
           </form>
@@ -97,7 +98,8 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
               </div>
               <div class="field full">
                 <label>Password *</label>
-                <input class="input" name="password" type="password" required minlength="8" placeholder="Min 8 chars, 1 uppercase, 1 number, 1 special" autocomplete="new-password" />
+                <input class="input" name="password" id="registerPassword" type="password" required minlength="8" placeholder="Min 8 chars, 1 uppercase, 1 number, 1 special" autocomplete="new-password" style="padding-right:44px" />
+                <button type="button" class="toggle-password" id="toggleRegisterPassword" aria-label="Show password">${icon('eye')}</button>
                 <span class="hint">Strong password zaroori hai — aap ka account secure rahe.</span>
               </div>
             </div>
@@ -252,4 +254,25 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
 
   const first = isRegister ? root.querySelector('#shopName') : root.querySelector('#loginIdentifier');
   setTimeout(() => first?.focus(), 80);
+
+  const toggleLoginPassword = root.querySelector('#toggleLoginPassword');
+  const toggleRegisterPassword = root.querySelector('#toggleRegisterPassword');
+  const loginPasswordInput = root.querySelector('#loginPassword');
+  const registerPasswordInput = root.querySelector('#registerPassword');
+  let loginShown = false;
+  let registerShown = false;
+  if (toggleLoginPassword && loginPasswordInput) {
+    toggleLoginPassword.addEventListener('click', () => {
+      loginShown = !loginShown;
+      loginPasswordInput.type = loginShown ? 'text' : 'password';
+      toggleLoginPassword.innerHTML = loginShown ? icon('eyeOff') : icon('eye');
+    });
+  }
+  if (toggleRegisterPassword && registerPasswordInput) {
+    toggleRegisterPassword.addEventListener('click', () => {
+      registerShown = !registerShown;
+      registerPasswordInput.type = registerShown ? 'text' : 'password';
+      toggleRegisterPassword.innerHTML = registerShown ? icon('eyeOff') : icon('eye');
+    });
+  }
 }

@@ -130,7 +130,7 @@ a { color: var(--teal); }
   align-items: flex-start;
 }
 
-.field { margin-bottom: 12px; }
+.field { margin-bottom: 12px; position: relative; }
 .field.full { width: 100%; }
 .field label { display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px; }
 .field .hint { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
@@ -146,6 +146,26 @@ a { color: var(--teal); }
 }
 .input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(15, 118, 110, .12); }
 select.input { cursor: pointer; }
+.toggle-password {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0;
+  z-index: 10;
+}
+.toggle-password:hover { background: #e2e8f0; color: #0f172a; border-color: #0f766e; }
+.toggle-password svg { width: 18px; height: 18px; }
+#loginPassword, #registerPassword { padding-right: 44px; }
 
 .form-grid { display: grid; gap: 12px; }
 
@@ -362,3 +382,9 @@ td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
 .search-wrap .input { padding-left: 32px; }
 
 .flex > .input { min-width: 0; }
+
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; display: none; }
+}
