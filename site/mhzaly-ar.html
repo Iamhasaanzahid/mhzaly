@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#f5f0e8" />
     <link rel="canonical" href="https://mhzaly.pages.dev/mhzaly-ar.html" />
     <link rel="stylesheet" href="fonts.css?v=1" />
-    <link rel="stylesheet" href="mhzaly-ar.css?v=20261104k" />
+    <link rel="stylesheet" href="mhzaly-ar.css?v=20261106c" />
     <script type="importmap">
       {
         "imports": {
@@ -144,8 +144,8 @@
                   </div>
                   <textarea id="ar-prompt" class="ar-prompt" rows="2" placeholder="Optional details — colour, fabric, room… e.g. “cream kurta, place on body”"></textarea>
                   <div class="ar-mode" id="ar-mode">
-                    <button type="button" class="ar-mode-btn is-on" data-mode="fast">⚡ Fast AI (10s)</button>
-                    <button type="button" class="ar-mode-btn" data-mode="best">✨ Best AI (design lock)</button>
+                    <button type="button" class="ar-mode-btn" data-mode="fast">⚡ Fast AI (~7s)</button>
+                    <button type="button" class="ar-mode-btn is-on" data-mode="best">✨ Best AI (design lock)</button>
                     <button type="button" class="ar-mode-btn" data-mode="exact">Same photo</button>
                     <span class="ar-mode-note" id="ar-mode-note">Naya model, naya background — same kapda</span>
                   </div>
@@ -199,6 +199,7 @@
                   <div class="foot">
                     <a class="ar-btn" href="index.html#fabric-ai">Open in 3D Studio</a>
                     <a class="ar-btn ar-btn-ghost" id="ar-download" href="#" download="mhzaly-ar-asset.jpg" hidden>⬇ Save image</a>
+                    <button class="ar-btn ar-btn-ghost" id="ar-reroll" type="button" hidden>🔄 New variation</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-compare" type="button" hidden>⇄ See original</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-expand" type="button" hidden>⤢ View full</button>
                     <button class="ar-btn ar-btn-ghost" id="ar-glb" type="button" hidden>⬇ Download 3D (GLB)</button>
@@ -446,7 +447,7 @@
       const FREE_AI = "https://text.pollinations.ai/openai";
       let lastRetryAfter = 0;
       let freeCooldownUntil = 0;
-      const GEN_IMG = (p, model = "flux") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.pages.dev&seed=${Math.floor(Math.random() * 1e9)}`;
+      const GEN_IMG = (p, model = "flux") => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1536&nologo=true&model=${model}&referrer=mhzaly.pages.dev&negative_prompt=${encodeURIComponent("blurry, deformed, extra limbs, extra fingers, watermark, text, logo, low quality, duplicate item")}&seed=${Math.floor(Math.random() * 1e9)}`;
       const AGENT_SYSTEM = `You are a senior fashion art director and AR planner.
 The user uploads a photo and may pick an item or type a request.
 Read their words carefully and convert them into a precise image-generation brief.
@@ -539,13 +540,13 @@ Rules:
         refreshPoolStatus();
       })();
       const savedMode = localStorage.getItem("mhzaly_gen_mode");
-      let genMode = savedMode === "exact" ? "exact" : savedMode === "best" ? "best" : "fast";
+      let genMode = savedMode === "exact" ? "exact" : savedMode === "fast" ? "fast" : "best";
       const arModeNote = document.getElementById("ar-mode-note");
       (function initMode() {
         const btns = document.querySelectorAll(".ar-mode-btn");
         const note = {
-          fast: "⚡ Tez render — naya model, naya background, same kapda",
-          best: "✨ AI aapka asli kapra reference me leta hai — design locked",
+          fast: "⚡ Tez render — naya model, naya background",
+          best: "✨ Design lock — AI aapka asli item reference me leta hai (recommended)",
           exact: "Aapki hi photo — design 100% same",
         };
         btns.forEach((b) => {
@@ -594,7 +595,9 @@ Rules:
         }
       });
       const arResultMeta = document.getElementById("ar-result-meta");
+      const arReroll = document.getElementById("ar-reroll");
       const arCompare = document.getElementById("ar-compare");
+      let lastGen = null;
       const arExpand = document.getElementById("ar-expand");
       const arProgress = document.getElementById("ar-progress");
       const arHistory = document.getElementById("ar-history");
@@ -1545,8 +1548,9 @@ Rules:
           // If the user typed their own words, honour them literally — no rewriting.
           const hasColour = /\b(red|blue|green|black|white|pink|yellow|orange|purple|maroon|navy|beige|cream|gold|silver|grey|gray|brown|teal|olive|mustard|rust)\b/i.test(extra);
           const cat = explicit ? optTxt.toLowerCase() : "";
-          const colourLine = palette.length && !hasColour
-            ? `Colour (measured from the uploaded item): ${palette[0]}${hexes[0] ? ` ${hexes[0]}` : ""}. The ${cat || "item"} must be this exact colour${palette.length > 1 ? `, with accents in ${palette.slice(1).join(" and ")}` : ""}. Do not recolour it.`
+          const colourNames = [...new Set(palette.filter(Boolean))];
+          const colourLine = colourNames.length && !hasColour
+            ? `Colour (measured from the uploaded item): ${colourNames[0]}${hexes[0] ? ` ${hexes[0]}` : ""}. The ${cat || "item"} must be this exact colour${colourNames.length > 1 ? `, with accents in ${colourNames.slice(1).join(" and ")}` : ""}. Do not recolour it.`
             : "";
           const subject = explicit
             ? (isWearable ? `a ${cat} worn by a fashion model` : `a single ${cat}`)
@@ -1561,12 +1565,17 @@ Rules:
           if (colourLine) parts.push(colourLine);
           parts.push(look);
           if (explicit && !isWearable) parts.push("Show only the item itself — do not add a person, model, mannequin or body.");
+          // Re-state the measured colour last — diffusion models weight the
+          // end of the prompt heavily, which keeps the item from drifting.
+          if (colourNames.length && !hasColour) parts.push(`The ${cat || "item"} is ${colourNames[0]} — keep this exact colour.`);
           const imagePrompt = parts.join(", ");
 
           const refB64 = await refP;
           const refNote = refB64
             ? ` Keep the exact same ${isWearable ? "garment" : "item"} design, colour, print, embroidery, hardware and material as the reference image.`
             : "";
+
+          lastGen = { prompt: imagePrompt + refNote, ref: refB64 };
 
           // ---- the image starts now; text work finishes alongside it ------
           setStep(2);
@@ -1598,6 +1607,15 @@ Rules:
                 g = await generateImage(imagePrompt + refNote, refB64);
               } catch (e) { g = null; }
             }
+            // Design-lock promise: if the AI is unavailable, keep the user's
+            // exact item and pixels instead of returning nothing.
+            if (!g && selectedFile && genMode === "best") {
+              try {
+                showStatus("rendering", "design lock · your exact item");
+                const locked = await designLockedRender(selectedFile);
+                if (locked) { locked.model = "design-lock"; g = locked; }
+              } catch (e) {}
+            }
             return g;
           })();
 
@@ -1612,6 +1630,7 @@ Rules:
               : "AI is busy right now — press Generate with AI once more.";
             arDownload.hidden = true;
             arCompare.hidden = true;
+            if (arReroll) arReroll.hidden = true;
             setStep(1);
             showStatus("failed", lastRetryAfter ? `free limit — ${lastRetryAfter}s` : "AI busy — try again");
             return;
@@ -1627,6 +1646,7 @@ Rules:
           arCompare.textContent = "⇄ See original";
           arCompare.dataset.mode = "ai";
           if (arExpand) arExpand.hidden = false;
+          if (arReroll) arReroll.hidden = false;
           endProgress();
           if (gen.model === "pollinations-direct") freeCooldownUntil = Date.now() + 46000;
           pushHistory(gen.url, gen.model);
@@ -1634,8 +1654,14 @@ Rules:
 
           // ---- now collect the slower text work ---------------------------
           const [garment, plan] = await Promise.all([visionP, planP]);
-          arResultDesc.textContent = garment ? `Same design: ${garment}` : (plan.description || "3D AR asset ready.");
-          const modelLabel = /flux-2/.test(gen.model || "") ? "FLUX.2 · reference"
+          const cap = (x) => x ? x.charAt(0).toUpperCase() + x.slice(1) : "";
+          const capItem = (plan.category || "").trim();
+          const capColour = (colourNames[0] || "").trim();
+          arResultDesc.textContent = (capItem || capColour)
+            ? `${[cap(capColour), capItem].filter(Boolean).join(" ")} — same design and colour as your photo.`
+            : (garment ? `Same design: ${stripColours(garment)}` : (plan.description || "3D AR asset ready."));
+          const modelLabel = /design-lock/.test(gen.model || "") ? "design lock · exact pixels"
+            : /flux-2/.test(gen.model || "") ? "FLUX.2 · reference"
             : /flux-1/.test(gen.model || "") ? "FLUX.1 · fast"
             : /pollinations/.test(gen.model || "") ? "free renderer"
             : "";
@@ -1664,6 +1690,44 @@ Rules:
           endProgress();
         }
       });
+
+      // New variation — re-render the same item/prompt with a fresh seed.
+      if (arReroll) {
+        arReroll.addEventListener("click", async () => {
+          if (!lastGen || arReroll.disabled) return;
+          arReroll.disabled = true;
+          const label = arReroll.textContent;
+          arReroll.textContent = "Rendering…";
+          const media = document.querySelector(".ar-result-media");
+          if (media) media.classList.add("is-loading");
+          try {
+            const g = await generateImage(lastGen.prompt, lastGen.ref);
+            if (g) {
+              arResultImg.src = g.url;
+              arResultImg.classList.remove("is-empty");
+              arDownload.href = g.url;
+              arDownload.hidden = false;
+              arCompare.hidden = !arPreview.src;
+              arCompare.dataset.gen = g.url;
+              arCompare.dataset.orig = arPreview.src || "";
+              arCompare.dataset.mode = "ai";
+              arCompare.textContent = "⇄ See original";
+              pushHistory(g.url, g.model);
+              if (window.__init3D) window.__init3D(g.url);
+              showStatus("ready", "new variation");
+            } else {
+              showStatus("failed", lastRetryAfter ? `free limit — ${lastRetryAfter}s` : "try again");
+            }
+          } catch (e) {
+            showStatus("failed", "try again");
+          } finally {
+            if (media) media.classList.remove("is-loading");
+            arReroll.disabled = false;
+            arReroll.textContent = label;
+            startFreeCooldown();
+          }
+        });
+      }
 
       // Before / after toggle — lets people compare the upload with the AI render.
       if (arCompare) {

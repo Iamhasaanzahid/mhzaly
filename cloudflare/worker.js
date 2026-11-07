@@ -20,6 +20,7 @@ const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  "Access-Control-Expose-Headers": "X-Model,X-AI-Log,Retry-After",
 };
 
 const SYSTEM = `You are an AR asset planner. Reply with JSON only:
@@ -242,7 +243,11 @@ async function generateImageCore(env, { prompt, refBytes, w, h, steps, quality }
     }
     if (!bytes) {
       try {
-        const out = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt, steps: 6 });
+        // schnell only accepts prompt/steps — no size control.
+        const out = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
+          prompt,
+          steps: wantBest ? 8 : 6,
+        });
         if (out && out.image) {
           const b = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
           if (b.length > 3000) { bytes = b; model = "flux-1-schnell"; }
