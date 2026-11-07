@@ -436,9 +436,30 @@ async function handleRegister(request, env) {
     if (code.length < 3) code = 'shop';
   }
 
-  const phoneTaken = await env.DB.prepare('SELECT id FROM shops WHERE phone = ?').bind(phone).first();
-  if (phoneTaken) {
-    throw new HttpError(409, 'Is phone number se pehle hi shop bani hui hai — login karein ya doosra number use karein');
+  const phoneRow = await env.DB.prepare(
+    'SELECT id, status, confirm_expires FROM shops WHERE phone = ?'
+  )
+    .bind(phone)
+    .first();
+  if (phoneRow) {
+    const expired =
+      phoneRow.status === 'pending' &&
+      phoneRow.confirm_expires &&
+      new Date(phoneRow.confirm_expires).getTime() < Date.now();
+    if (expired) {
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM shop_data WHERE shop_id = ?').bind(phoneRow.id),
+        env.DB.prepare('DELETE FROM users WHERE shop_id = ?').bind(phoneRow.id),
+        env.DB.prepare('DELETE FROM shops WHERE id = ?').bind(phoneRow.id),
+      ]);
+    } else if (phoneRow.status === 'pending') {
+      throw new HttpError(
+        409,
+        'Is number ki request pehle se approval ke intezaar mein hai. Owner approve karega to aap login kar sakte hain.'
+      );
+    } else {
+      throw new HttpError(409, 'Is phone number se pehle hi shop bani hui hai — login karein ya doosra number use karein');
+    }
   }
 
   if (givenEmail) {
