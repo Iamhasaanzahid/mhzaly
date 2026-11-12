@@ -250,8 +250,9 @@ export function render(root) {
             </button>`).join('')}
         </div>
         <p class="small muted mt-sm" style="margin-bottom:0">
-          ${LANGS.length} languages · translation coverage is language ke liye ${coverage(currentLang.code)}%.
-          Arabic RTL (right-to-left) support ke sath aata hai. Koi bhi string translate na ho to woh Roman Urdu mein hi rehti hai.
+          ${LANGS.length} languages · is language mein <b>${coverage(currentLang.code)}%</b> core UI strings translate hain.
+          Arabic RTL (right-to-left) support ke sath aata hai. Koi bhi string translate na ho to woh Roman Urdu mein hi rehti hai —
+          AI assistant ke lambe jawab abhi Roman Urdu mein hain.
         </p>
       </div>
     </div>
