@@ -244,10 +244,8 @@ export function render(root) {
         root.querySelector('#posPhone').value = match.phone;
         customerPhone = match.phone;
       }
-      if (match.taxNumber) {
-        root.querySelector('#posTax').value = match.taxNumber;
-        customerTax = match.taxNumber;
-      }
+      root.querySelector('#posTax').value = match.taxNumber || '';
+      customerTax = match.taxNumber || '';
     }
   });
   root.querySelector('#posPhone').addEventListener('input', (e) => {
@@ -258,10 +256,8 @@ export function render(root) {
         customerName = match.name;
         root.querySelector('#posCustomer').value = match.name;
       }
-      if (match.taxNumber) {
-        root.querySelector('#posTax').value = match.taxNumber;
-        customerTax = match.taxNumber;
-      }
+      root.querySelector('#posTax').value = match.taxNumber || '';
+      customerTax = match.taxNumber || '';
     }
   });
   root.querySelector('#posTax').addEventListener('input', (e) => {

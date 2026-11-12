@@ -1,5 +1,5 @@
 /* Service worker — offline support (network-first, cache fallback) */
-const CACHE = 'mhzaly-v27';
+const CACHE = 'mhzaly-v28';
 const ASSETS = [
   './',
   './index.html',

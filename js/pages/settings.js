@@ -27,6 +27,9 @@ function syncShell() {
 }
 
 function sampleSale() {
+  const rate = Math.max(0, Math.min(100, Number(db.settings.taxRate) || 0));
+  const subtotal = 490;
+  const tax = Math.round(subtotal * rate) / 100;
   return {
     invoiceNo: 'PREVIEW-001',
     createdAt: new Date().toISOString(),
@@ -35,10 +38,11 @@ function sampleSale() {
       { name: 'Sample item A', qty: 2, price: 120 },
       { name: 'Sample item B', qty: 1, price: 250 },
     ],
-    subtotal: 490,
+    subtotal,
     discount: 0,
-    tax: 0,
-    total: 490,
+    taxRate: rate,
+    tax,
+    total: subtotal + tax,
     paymentMethod: 'Cash',
   };
 }
