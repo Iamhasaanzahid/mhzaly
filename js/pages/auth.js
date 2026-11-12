@@ -5,6 +5,7 @@
 import { login, register, clearSession, setDemo } from '../api.js';
 import { configureShop, hydrate, SHOP_TYPES, shopTypeLabel, loadSampleData } from '../db.js';
 import { icon, esc } from '../ui.js';
+import { LANGS, getLang, setLang, languageOptions, applyLang } from '../i18n.js';
 
 function goToApp() {
   history.replaceState(null, '', location.pathname + '#/dashboard');
@@ -50,10 +51,11 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
         <div class="auth-card">
           <div class="auth-card-top">
             <div class="brand-logo">${icon('bag')}</div>
-            <div>
+            <div class="grow">
               <h2 id="authTitle">${isRegister ? 'Create your shop' : 'Welcome back'}</h2>
               <p id="authSub">${isRegister ? 'Free account — start in a minute' : 'Login to your shop'}</p>
             </div>
+            <select class="input auth-lang" id="authLang" aria-label="Language" title="Language">${languageOptions(getLang())}</select>
           </div>
 
           <div id="shopBrand" class="shop-brand" hidden></div>
@@ -258,6 +260,15 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
 
   const first = isRegister ? root.querySelector('#shopName') : root.querySelector('#loginIdentifier');
   setTimeout(() => first?.focus(), 80);
+
+  const langSelect = root.querySelector('#authLang');
+  if (langSelect) {
+    langSelect.addEventListener('change', () => {
+      setLang(langSelect.value);
+      render(root, { mode, shopCode });
+      applyLang(document);
+    });
+  }
 
   const toggleLoginPassword = root.querySelector('#toggleLoginPassword');
   const toggleRegisterPassword = root.querySelector('#toggleRegisterPassword');

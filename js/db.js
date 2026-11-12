@@ -65,6 +65,7 @@ export function defaultSettings() {
     logo: '',
     restockLeadDays: 7,
     restockCoverDays: 14,
+    language: 'ur',
   };
 }
 

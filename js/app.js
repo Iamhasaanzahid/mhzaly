@@ -9,6 +9,7 @@ import {
   changePassword, onSyncStatus, getSyncStatus, markSynced,
 } from './api.js';
 import { resolvedTheme, applyTheme, toggleTheme, watchSystemTheme } from './theme.js';
+import { LANGS, initLang, applyLang, setLang, getLang, coverage, t } from './i18n.js';
 
 import * as authPage from './pages/auth.js';
 import * as dashboard from './pages/dashboard.js';
@@ -82,6 +83,7 @@ function openCommandPalette() {
     { label: 'Settings', hint: 'Shop & backup', go: 'settings', icon: 'settings' },
     { label: 'Keyboard shortcuts', hint: 'Shortcut help', shortcuts: true, icon: 'settings' },
     { label: 'Toggle dark mode', hint: 'Theme', theme: true, icon: 'moon' },
+    { label: 'Language', hint: '12 languages · زبان · भाषा', lang: true, icon: 'globe' },
   ];
   openModal({
     title: 'Quick actions',
@@ -102,6 +104,7 @@ function openCommandPalette() {
         bd.remove();
         if (a.theme) toggleTheme();
         else if (a.shortcuts) openShortcutsHelp();
+        else if (a.lang) openLanguagePicker();
         else if (a.go) navigate('#/' + a.go);
       };
       paint();
@@ -122,8 +125,48 @@ function openCommandPalette() {
   });
 }
 
-function openShortcutsHelp() {
+/* ---------- language picker ---------- */
+
+export function switchLanguage(code) {
+  const next = setLang(code);
+  try {
+    db.settings.language = next;
+    save();
+  } catch { /* sync not available */ }
+  const hash = location.hash || '#/dashboard';
+  renderShell();
+  navigate(hash);
+  applyLang(document);
+  const meta = LANGS.find((l) => l.code === next);
+  toast(`${meta ? meta.flag + ' ' + meta.native : next}`);
+  return next;
+}
+
+function openLanguagePicker() {
+  const current = getLang();
   openModal({
+    title: 'Language',
+    subtitle: 'Apni zaban chunein — ye setting aap ke account ke saath save hoti hai',
+    body: `<div class="lang-grid">${LANGS.map((l) => `
+        <button class="lang-item ${l.code === current ? 'active' : ''}" data-lang="${l.code}" type="button">
+          <span class="lang-flag">${l.flag}</span>
+          <span class="lang-name"><b>${esc(l.native)}</b><em>${esc(l.name)}</em></span>
+          <span class="lang-check">${l.code === current ? icon('check') : ''}</span>
+        </button>`).join('')}</div>`,
+    onMount: (bd) => {
+      applyLang(bd);
+      bd.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-lang]');
+        if (!btn) return;
+        const code = btn.dataset.lang;
+        bd.remove();
+        switchLanguage(code);
+      });
+    },
+  });
+}
+
+function openShortcutsHelp() {  openModal({
     title: 'Keyboard shortcuts',
     subtitle: 'Kaam tez karne ke liye',
     body: `
@@ -178,10 +221,12 @@ function renderAuthView() {
   document.title = 'mhzaly — Shop Manager';
   authPage.render(document.getElementById('app'), { mode, shopCode });
   linkLabels(document.getElementById('app'));
+  applyLang(document);
 }
 
 export function init() {
   applyTheme();
+  initLang();
   watchSystemTheme((resolved) => {
     const btn = document.getElementById('themeBtn');
     if (btn) btn.innerHTML = icon(resolved === 'dark' ? 'sun' : 'moon');
@@ -248,6 +293,14 @@ export function init() {
           db.settings._billingStatus = res.shop.billingStatus;
           save();
         }
+        // The shop's saved language wins over this device's choice.
+        const remoteLang = res.data && res.data.settings ? res.data.settings.language : '';
+        if (remoteLang && remoteLang !== getLang()) {
+          setLang(remoteLang, { persist: false });
+        } else if (!remoteLang && getLang()) {
+          db.settings.language = getLang();
+          save();
+        }
         markSynced();
         renderShell();
         navigate('#/dashboard');
@@ -297,6 +350,7 @@ function shell() {
             <span class="pill date-pill">${icon('calendar')}<span id="todayPill"></span></span>
             <button class="icon-btn" id="installBtn" title="Install app" hidden>${icon('download')}</button>
             <button class="icon-btn" id="themeBtn" title="Dark mode">${icon('moon')}</button>
+            <button class="icon-btn" id="langBtn" title="Language" aria-label="Language">${icon('globe')}</button>
             <button class="icon-btn" id="cmdBtn" title="Quick actions (Ctrl+/)" aria-label="Quick actions">${icon('search')}</button>
             <button class="icon-btn account-btn" id="accountBtn" title="Shop account">${esc(initials(db.settings.ownerName || shop))}</button>
             <button class="btn btn-ghost btn-sm" id="logoutTopBtn" title="${isDemo() ? 'Exit demo' : 'Logout'}">${isDemo() ? 'Exit' : 'Logout'}</button>
@@ -365,6 +419,9 @@ function shell() {
 
   const cmdBtn = document.getElementById('cmdBtn');
   if (cmdBtn) cmdBtn.addEventListener('click', openCommandPalette);
+
+  const langBtn = document.getElementById('langBtn');
+  if (langBtn) langBtn.addEventListener('click', openLanguagePicker);
 
   const installBtn = document.getElementById('installBtn');
   if (installBtn) {
@@ -483,6 +540,7 @@ function navigate(hash) {
     const root = document.getElementById('main');
     mod.render(root, rest.join('/'));
     linkLabels(root);
+    applyLang(document);
   } else {
     document.getElementById('main').innerHTML = `<div class="empty-state">Page not found: ${esc(pageId)}</div>`;
   }

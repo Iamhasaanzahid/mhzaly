@@ -7,6 +7,7 @@ import { icon, esc, toast, confirmDialog, downloadFile, linkLabels } from '../ui
 import { getThemeChoice, setThemeChoice } from '../theme.js';
 import { printReceipt } from '../receipt-share.js';
 import { TAX_SYSTEMS, taxSystem, qrSvg, saleVerifyUrl } from '../tax.js';
+import { LANGS, getLang, languageOptions, coverage, setLang, applyLang } from '../i18n.js';
 
 export const meta = { title: 'Settings', subtitle: 'Shop details, backup and preferences' };
 
@@ -49,6 +50,7 @@ function sampleSale() {
 
 export function render(root) {
   const s = db.settings;
+  const currentLang = LANGS.find((l) => l.code === getLang()) || LANGS[0];
   const shop = s.shopName || 'My Mart';
   let logoData = s.logo || '';
   const previewTaxRate = Number(s.taxRate) || 0;
@@ -228,6 +230,32 @@ export function render(root) {
       </div>
     </div>
 
+    <div class="card mt">
+      <div class="card-head">
+        <h3>Language</h3>
+        <div class="right"><span class="badge teal">${esc(currentLang.native)}</span></div>
+      </div>
+      <div class="card-pad">
+        <div class="field">
+          <label>App ki zaban / App language</label>
+          <select class="input" id="settingsLang">${languageOptions(currentLang.code)}</select>
+          <span class="hint">Jo bhi client apni zaban mein account banata hai, usko apni hi zaban milti hai — account ke saath sync hoti hai.</span>
+        </div>
+        <div class="lang-grid compact">
+          ${LANGS.map((l) => `
+            <button class="lang-item ${l.code === currentLang.code ? 'active' : ''}" type="button" data-set-lang="${l.code}">
+              <span class="lang-flag">${l.flag}</span>
+              <span class="lang-name"><b>${esc(l.native)}</b><em>${esc(l.name)}</em></span>
+              <span class="lang-check">${l.code === currentLang.code ? icon('check') : ''}</span>
+            </button>`).join('')}
+        </div>
+        <p class="small muted mt-sm" style="margin-bottom:0">
+          ${LANGS.length} languages · translation coverage is language ke liye ${coverage(currentLang.code)}%.
+          Arabic RTL (right-to-left) support ke sath aata hai. Koi bhi string translate na ho to woh Roman Urdu mein hi rehti hai.
+        </p>
+      </div>
+    </div>
+
     <div class="grid k2 mt">
       <div class="card">
         <div class="card-head"><h3>Backup & restore</h3><div class="right"><span class="badge">${storageSize()}</span></div></div>
@@ -338,6 +366,25 @@ export function render(root) {
       root.querySelectorAll('[data-theme-choice]').forEach((b) => b.classList.toggle('active', b === btn));
       toast(choice === 'system' ? 'Theme: device ke mutabiq' : `Theme: ${choice === 'dark' ? 'Dark' : 'Light'} mode`, 'success');
     });
+  });
+
+  const switchLang = (code) => {
+    setLang(code);
+    try {
+      db.settings.language = code;
+      save();
+    } catch { /* sync unavailable */ }
+    applyLang(document);
+    rerender();
+    applyLang(document);
+    const meta = LANGS.find((l) => l.code === code);
+    toast(`Language: ${meta ? meta.native : code}`, 'success');
+  };
+
+  const langSelect = root.querySelector('#settingsLang');
+  if (langSelect) langSelect.addEventListener('change', () => switchLang(langSelect.value));
+  root.querySelectorAll('[data-set-lang]').forEach((btn) => {
+    btn.addEventListener('click', () => switchLang(btn.dataset.setLang));
   });
 
   root.querySelector('#shopForm').addEventListener('submit', (e) => {

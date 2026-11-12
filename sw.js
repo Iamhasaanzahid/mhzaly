@@ -1,5 +1,5 @@
 /* Service worker — offline support (network-first, cache fallback) */
-const CACHE = 'mhzaly-v31';
+const CACHE = 'mhzaly-v32';
 const ASSETS = [
   './',
   './index.html',
@@ -23,6 +23,19 @@ const ASSETS = [
   './js/statement.js',
   './js/insights.js',
   './js/review.js',
+  './js/i18n.js',
+  './js/i18n/ur.js',
+  './js/i18n/en.js',
+  './js/i18n/hi.js',
+  './js/i18n/bn.js',
+  './js/i18n/de.js',
+  './js/i18n/fr.js',
+  './js/i18n/es.js',
+  './js/i18n/pt.js',
+  './js/i18n/tr.js',
+  './js/i18n/ru.js',
+  './js/i18n/zh.js',
+  './js/i18n/ar.js',
   './js/tax.js',
   './js/vendor/qrcode.js',
   './js/verify.js',
