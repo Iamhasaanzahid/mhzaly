@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="robots" content="noindex" />
+  <meta name="description" content="Verify a mhzaly tax invoice from its receipt QR code." />
+  <title>mhzaly — Tax Invoice Verification</title>
+  <link rel="icon" href="./icon.svg" />
+  <style>
+    :root {
+      --navy: #0f172a;
+      --navy-2: #111f36;
+      --teal: #0f766e;
+      --teal-2: #14b8a6;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --soft: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(20, 184, 166, .22), transparent 60%),
+        radial-gradient(700px 500px at 100% 0%, rgba(59, 130, 246, .16), transparent 55%),
+        linear-gradient(160deg, #0b1220 0%, #0f172a 55%, #111f36 100%);
+      min-height: 100vh;
+      padding: 28px 16px 40px;
+    }
+    .wrap { width: min(680px, 100%); margin: 0 auto; }
+    .brand { display: flex; align-items: center; gap: 12px; color: #fff; margin-bottom: 18px; }
+    .mark {
+      width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--teal-2), var(--teal));
+      color: #fff; font-weight: 900; font-size: 22px; letter-spacing: -.05em;
+      box-shadow: 0 10px 28px rgba(20, 184, 166, .25);
+    }
+    .brand b { display: block; font-size: 19px; letter-spacing: -.02em; }
+    .brand small { display: block; color: #94a3b8; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; margin-top: 2px; }
+    .card {
+      background: #fff; border-radius: 20px; padding: 24px;
+      box-shadow: 0 30px 80px rgba(2, 6, 23, .38);
+      border: 1px solid rgba(255, 255, 255, .5);
+    }
+    .loading { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 13px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4;
+      border-radius: 99px; padding: 5px 11px; font-size: 10.5px;
+      font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .badge.warn { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .badge.danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+    .top { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; margin-bottom: 18px; }
+    h1 { font-size: 23px; line-height: 1.2; letter-spacing: -.03em; margin: 10px 0 4px; }
+    .sub { color: var(--muted); font-size: 12px; margin: 0; }
+    .invoice-pill {
+      flex: 0 0 auto; text-align: right; background: var(--soft); border: 1px solid var(--line);
+      border-radius: 12px; padding: 9px 12px; min-width: 128px;
+    }
+    .invoice-pill span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
+    .invoice-pill b { display: block; font-size: 13px; margin-top: 4px; word-break: break-word; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 18px; }
+    .cell { border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; background: var(--soft); }
+    .cell span { display: block; color: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }
+    .cell b { display: block; margin-top: 4px; font-size: 13px; word-break: break-word; }
+    .amounts { margin-top: 16px; border: 1px solid var(--line); border-radius: 13px; overflow: hidden; }
+    .row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 13px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; }
+    .row span { color: var(--muted); }
+    .row b { text-align: right; }
+    .row.total { background: #f0fdfa; font-size: 15px; padding: 12px 13px; }
+    .row.total b { color: #0f766e; font-size: 19px; letter-spacing: -.02em; }
+    .note {
+      margin-top: 16px; padding: 10px 12px; border-radius: 10px;
+      background: #f8fafc; border: 1px solid var(--line);
+      color: #475569; font-size: 10.5px; line-height: 1.55;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+    .btn {
+      appearance: none; border: 1px solid var(--line); background: #fff; color: #334155;
+      height: 40px; padding: 0 16px; border-radius: 10px; font: inherit;
+      font-size: 12.5px; font-weight: 700; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .btn:hover { background: #f8fafc; }
+    .btn.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+    .btn.primary:hover { background: #0d5f59; }
+    .foot { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 18px; }
+    .foot a { color: #5eead4; text-decoration: none; }
+    .error { text-align: center; padding: 18px 8px 6px; }
+    .error-ico {
+      width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
+      margin: 0 auto 12px; background: #fef2f2; color: #b91c1c; font-size: 26px; font-weight: 800;
+    }
+    .error h2 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.02em; }
+    .error p { margin: 0 auto; color: var(--muted); font-size: 12.5px; line-height: 1.6; max-width: 420px; }
+    @media (max-width: 560px) {
+      body { padding: 18px 10px 30px; }
+      .card { padding: 18px; border-radius: 16px; }
+      .top { flex-direction: column; }
+      .invoice-pill { text-align: left; width: 100%; }
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 20px; }
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .brand, .actions, .foot { display: none !important; }
+      .card { box-shadow: none; border: 0; padding: 0; }
+      .note { border-color: #e2e8f0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand">
+      <div class="mark">m</div>
+      <div><b>mhzaly</b><small>Tax invoice verification</small></div>
+    </div>
+    <section class="card" id="verifyCard" aria-live="polite">
+      <div class="loading">Verifying invoice…</div>
+    </section>
+    <p class="foot">Powered by mhzaly · <a href="./">Open shop app</a></p>
+  </main>
+  <script type="module" src="./js/verify.js"></script>
+</body>
+</html>

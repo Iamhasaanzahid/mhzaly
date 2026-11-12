@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { db } from './db.js';
-import { currentTaxSystem, saleTaxPayload, qrDataUrl } from './tax.js';
+import { currentTaxSystem, saleVerifyUrl, qrDataUrl } from './tax.js';
 
 function settings() {
   return db.settings || {};
@@ -95,7 +95,8 @@ export function receiptText(sale) {
   if (s.receiptNote) lines.push('', s.receiptNote);
   if (s.receiptTerms) lines.push('', s.receiptTerms);
   if (s.receiptQr !== false && (s.taxNumber || sale.customerTaxNumber || tax > 0)) {
-    lines.push('', '🔳 Tax QR code printed receipt par hai.');
+    lines.push('', '🔳 Tax invoice QR printed receipt par hai.');
+    lines.push(`🔗 Verify: ${saleVerifyUrl(sale)}`);
   }
   lines.push('', '_Powered by mhzaly_');
   return lines.join('\n');
@@ -120,12 +121,13 @@ export function receiptHtml(sale) {
   const shopTax = s.taxNumber || '';
   const buyerTax = sale.customerTaxNumber || '';
   const showTax = Boolean(shopTax || buyerTax || tax > 0);
-  const qr = s.receiptQr !== false && showTax ? qrDataUrl(saleTaxPayload(sale), 4, 2) : '';
+  const qr = s.receiptQr !== false && showTax ? qrDataUrl(saleVerifyUrl(sale), 4, 2) : '';
   const taxBox = showTax
     ? `<div class="tax-box">
         <div class="tax-title">${escapeHtml(taxInfo.system)} Tax Invoice</div>
         ${shopTax ? `<div><span>Seller ${escapeHtml(taxInfo.numberLabel)}</span><b>${escapeHtml(shopTax)}</b></div>` : ''}
         ${buyerTax ? `<div><span>Buyer ${escapeHtml(taxInfo.numberLabel)}</span><b>${escapeHtml(buyerTax)}</b></div>` : ''}
+        <div><span>Taxable amount</span><b>${fmt(Math.max(0, subtotal - discount))}</b></div>
         <div><span>Tax rate</span><b>${Number(sale.taxRate) || 0}%</b></div>
         <div><span>Tax amount</span><b>${fmt(tax)}</b></div>
       </div>`

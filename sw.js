@@ -1,9 +1,10 @@
 /* Service worker — offline support (network-first, cache fallback) */
-const CACHE = 'mhzaly-v28';
+const CACHE = 'mhzaly-v30';
 const ASSETS = [
   './',
   './index.html',
   './owner.html',
+  './verify.html',
   './manifest.json',
   './icon.svg',
   './css/styles.css',
@@ -19,8 +20,11 @@ const ASSETS = [
   './js/receipt-share.js',
   './js/csv.js',
   './js/statement.js',
+  './js/insights.js',
+  './js/review.js',
   './js/tax.js',
   './js/vendor/qrcode.js',
+  './js/verify.js',
   './js/pages/auth.js',
   './js/pages/dashboard.js',
   './js/pages/assistant.js',
@@ -34,6 +38,9 @@ const ASSETS = [
   './js/pages/reports.js',
   './js/pages/returns.js',
   './js/pages/settings.js',
+  './js/pages/restock.js',
+  './js/pages/dayclose.js',
+  './js/pages/leaks.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -60,7 +67,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-cache' })
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});

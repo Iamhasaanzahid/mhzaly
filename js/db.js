@@ -6,7 +6,7 @@ import { scheduleSync } from './api.js';
 
 const LEGACY_KEY = 'mart_manager_db_v1';
 const CACHE_PREFIX = 'mhzaly_db_';
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 let storageKey = LEGACY_KEY;
 let syncEnabled = false;
@@ -63,6 +63,8 @@ export function defaultSettings() {
     taxSystem: 'GST',
     receiptQr: true,
     logo: '',
+    restockLeadDays: 7,
+    restockCoverDays: 14,
   };
 }
 
@@ -78,6 +80,7 @@ function freshDb() {
     payments: [],
     returns: [],
     expenses: [],
+    closings: [],
     counters: { invoice: 1, purchase: 1 },
     createdAt: new Date().toISOString(),
   };
@@ -99,6 +102,7 @@ export function normalizeDb(parsed) {
     payments: Array.isArray(data.payments) ? data.payments : [],
     returns: Array.isArray(data.returns) ? data.returns : [],
     expenses: Array.isArray(data.expenses) ? data.expenses : [],
+    closings: Array.isArray(data.closings) ? data.closings : [],
   };
 }
 

@@ -57,6 +57,7 @@ export function render(root) {
               <tr>
                 <th style="text-align:left">Title</th>
                 <th style="text-align:left">Category</th>
+                <th style="text-align:left">Paid via</th>
                 <th style="text-align:right">Amount</th>
                 <th style="text-align:left">Date</th>
                 <th style="width:70px"></th>
@@ -91,6 +92,7 @@ export function render(root) {
           !q ||
           String(e.title || '').toLowerCase().includes(q) ||
           String(e.category || '').toLowerCase().includes(q) ||
+          String(e.method || '').toLowerCase().includes(q) ||
           String(e.note || '').toLowerCase().includes(q);
         const matchesRange = !from || new Date(e.createdAt || 0) >= from;
         const matchesCategory = category === 'all' || (e.category || 'Other') === category;
@@ -109,7 +111,7 @@ export function render(root) {
     }
     if (!list.length) {
       root.querySelector('#expenseTableBody').innerHTML = `
-        <tr><td colspan="5"><div class="empty-state">Is filter mein koi expense record nahi.</div></td></tr>`;
+        <tr><td colspan="6"><div class="empty-state">Is filter mein koi expense record nahi.</div></td></tr>`;
       return;
     }
     root.querySelector('#expenseTableBody').innerHTML = list
@@ -118,6 +120,7 @@ export function render(root) {
       <tr>
         <td><b>${esc(e.title)}</b>${e.note ? `<div class="pos-meta">${esc(e.note)}</div>` : ''}</td>
         <td><span class="badge neutral">${esc(e.category || 'Other')}</span></td>
+        <td><span class="badge ${e.method === 'Cash' || !e.method ? 'ok' : 'teal'}">${esc(e.method || 'Cash')}</span></td>
         <td style="text-align:right">${money(e.amount)}</td>
         <td>${new Date(e.createdAt).toLocaleDateString('en-GB')}</td>
         <td style="text-align:right">
@@ -148,6 +151,13 @@ export function render(root) {
               ${CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join('')}
             </select>
           </label>
+          <label>Paid via
+            <select id="efMethod">
+              <option value="Cash">Cash</option>
+              <option value="Card">Card</option>
+              <option value="Online">Online / Bank</option>
+            </select>
+          </label>
           <label>Amount (${esc(db.settings.currency || 'Rs')})
             <input id="efAmount" type="number" min="0" step="0.01" placeholder="0" />
           </label>
@@ -172,6 +182,7 @@ export function render(root) {
             id: uid('exp'),
             title,
             category: bd.querySelector('#efCategory').value,
+            method: bd.querySelector('#efMethod').value || 'Cash',
             amount,
             note: bd.querySelector('#efNote').value.trim(),
             createdAt: dateVal ? new Date(dateVal + 'T12:00:00').toISOString() : new Date().toISOString(),
@@ -208,12 +219,13 @@ export function render(root) {
   });
 
   root.querySelector('#exportExpenses').addEventListener('click', () => {
-    const rows = [['Date', 'Title', 'Category', 'Amount', 'Note']];
+    const rows = [['Date', 'Title', 'Category', 'Paid via', 'Amount', 'Note']];
     for (const e of filtered()) {
       rows.push([
         new Date(e.createdAt).toISOString().slice(0, 10),
         e.title || '',
         e.category || 'Other',
+        e.method || 'Cash',
         Number(e.amount) || 0,
         e.note || '',
       ]);

@@ -4,6 +4,7 @@
 
 import { db, lowStockProducts, totalReceivable } from '../db.js';
 import { icon, esc, emptyState } from '../ui.js';
+import { businessHealth } from '../insights.js';
 
 function greeting() {
   const h = new Date().getHours();
@@ -44,10 +45,20 @@ function kpi(iconName, tone, label, value, sub) {
   </div>`;
 }
 
+function healthBar(label, value) {
+  const tone = value >= 70 ? 'ok' : value >= 45 ? 'warn' : 'danger';
+  return `<div class="health-bar">
+    <span>${esc(label)}</span>
+    <div class="health-bar-track"><div class="health-bar-fill ${tone}" style="width:${Math.max(3, value)}%"></div></div>
+    <b>${value}</b>
+  </div>`;
+}
+
 export function render(root) {
   const shop = db.settings.shopName || 'My Mart';
   const low = lowStockProducts();
   const receivable = totalReceivable();
+  const health = businessHealth();
 
   const todayStart = dayStart(new Date());
   const todaySales = db.sales.filter((s) => new Date(s.createdAt || 0) >= todayStart);
@@ -150,6 +161,32 @@ export function render(root) {
       <button class="btn btn-ghost btn-sm" data-nav="assistant">Ask AI</button>
     </div>
 
+    <div class="card health-card">
+      <div class="health-ring ${health.tone}" style="--score:${health.score}">
+        <div class="health-ring-inner"><b>${health.score}</b><span>Pulse</span></div>
+      </div>
+      <div class="grow">
+        <div class="health-head">
+          <div><b>Business Health</b> <span class="badge ${health.tone}">${esc(health.grade)}</span></div>
+          <span class="small muted">Last 30 days</span>
+        </div>
+        <div class="health-bars">
+          ${healthBar('Sales', health.salesScore)}
+          ${healthBar('Profit', health.profitScore)}
+          ${healthBar('Stock', health.stockScore)}
+          ${healthBar('Credit', health.creditScore)}
+          ${healthBar('Expenses', health.expenseScore)}
+        </div>
+        <div class="health-actions">
+          ${health.actions.slice(0, 2).map((action) => `
+            <button class="health-chip ${action.tone}" data-nav="${action.go}">
+              <b>${esc(action.label)}</b>
+              <span>${esc(action.detail)}</span>
+            </button>`).join('')}
+        </div>
+      </div>
+    </div>
+
     <div class="dashboard-row">
       <div class="card chart-card">
         <div class="card-head">
@@ -166,6 +203,9 @@ export function render(root) {
         <div class="card-pad">
           <div class="quick-actions">
             <button class="quick-btn" data-nav="pos">${icon('plus')} New Sale</button>
+            <button class="quick-btn" data-nav="restock">${icon('alert')} Smart Restock</button>
+            <button class="quick-btn" data-nav="leaks">${icon('chart')} Profit Leaks</button>
+            <button class="quick-btn" data-nav="dayclose">${icon('wallet')} Day Close</button>
             <button class="quick-btn" data-nav="products">${icon('bag')} Products</button>
             <button class="quick-btn" data-nav="customers">${icon('bag')} Customers</button>
             <button class="quick-btn" data-nav="purchases">${icon('alert')} Purchases</button>

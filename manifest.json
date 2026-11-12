@@ -1,9 +1,22 @@
 {
-  "name": "mhzaly",
+  "name": "mhzaly — Shop Manager",
   "short_name": "mhzaly",
+  "description": "Offline-first shop manager with AI business intelligence, tax invoices and QR verification.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#ffffff",
   "theme_color": "#0f766e",
-  "icons": []
+  "lang": "en",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "New Sale", "short_name": "POS", "url": "./#/pos", "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Smart Restock", "short_name": "Restock", "url": "./#/restock", "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Day Close", "short_name": "Close", "url": "./#/dayclose", "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "AI Assistant", "short_name": "AI", "url": "./#/assistant", "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+  ]
 }

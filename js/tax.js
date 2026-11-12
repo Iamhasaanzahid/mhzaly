@@ -167,10 +167,47 @@ export function taxNumberLabel() {
   return currentTaxSystem().numberLabel || 'Tax Number';
 }
 
-/** Compact, human-readable QR payload for a tax invoice. */
+function round2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+/** Shop-local YYYY-MM-DD key (avoids UTC day shift on tax invoices). */
+function localDateKey(value) {
+  const d = new Date(value || Date.now());
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function b64urlEncode(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Normalised totals used by the receipt, QR payload and verification page. */
+export function saleTaxData(sale) {
+  const items = Array.isArray(sale.items) ? sale.items : [];
+  const itemSubtotal = items.reduce(
+    (sum, it) => sum + (Number(it.qty) || 1) * (Number(it.price) || 0),
+    0
+  );
+  const subtotal = itemSubtotal || Number(sale.subtotal) || 0;
+  const discount = Math.max(0, Number(sale.discount) || 0);
+  const taxable = Math.max(0, subtotal - discount);
+  const rate = Math.max(0, Math.min(100, Number(sale.taxRate) || 0));
+  const tax = Number.isFinite(Number(sale.tax))
+    ? Math.max(0, Number(sale.tax))
+    : Math.round(taxable * rate) / 100;
+  const total = Number(sale.total ?? (taxable + tax)) || 0;
+  return { subtotal: round2(subtotal), discount: round2(discount), taxable: round2(taxable), rate, tax: round2(tax), total: round2(total) };
+}
+
+/** Compact tax-invoice payload encoded into the receipt QR. */
 export function saleTaxPayload(sale) {
   const s = db.settings || {};
   const system = currentTaxSystem();
+  const totals = saleTaxData(sale);
   const payload = {
     v: 1,
     app: 'mhzaly',
@@ -178,15 +215,31 @@ export function saleTaxPayload(sale) {
     sellerTax: s.taxNumber || '',
     buyerTax: sale.customerTaxNumber || '',
     invoice: sale.invoiceNo || sale.id || '',
-    date: String(sale.createdAt || '').slice(0, 10),
-    total: Number(sale.total) || 0,
-    tax: Number(sale.tax) || 0,
+    date: localDateKey(sale.createdAt),
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    taxable: totals.taxable,
+    taxRate: totals.rate,
+    tax: totals.tax,
+    total: totals.total,
     currency: s.currency || 'Rs',
     taxSystem: system.system || 'Tax',
     country: system.country || 'PK',
   };
   return JSON.stringify(payload);
 }
+
+/** Public, scan-friendly verification URL for the receipt QR. */
+export function saleVerifyUrl(sale) {
+  let base = 'https://mhzaly.pages.dev/verify.html';
+  try {
+    base = new URL('verify.html', location.href).toString();
+  } catch { /* use production fallback when location is unavailable */ }
+  const url = new URL(base);
+  url.searchParams.set('d', b64urlEncode(saleTaxPayload(sale)));
+  return url.toString();
+}
+
 
 function makeQr(text) {
   if (!text) return null;

@@ -23,9 +23,12 @@ import * as expenses from './pages/expenses.js';
 import * as reports from './pages/reports.js';
 import * as settings from './pages/settings.js';
 import * as returns from './pages/returns.js';
+import * as restock from './pages/restock.js';
+import * as dayclose from './pages/dayclose.js';
+import * as leaks from './pages/leaks.js';
 
 const PAGES = {
-  dashboard, assistant, login: authPage, pos, products, sales, purchases, customers, suppliers, expenses, reports, settings, returns,
+  dashboard, assistant, login: authPage, pos, products, sales, purchases, customers, suppliers, expenses, reports, settings, returns, restock, dayclose, leaks,
 };
 
 const PAGE_TITLES = {
@@ -41,6 +44,9 @@ const PAGE_TITLES = {
   reports: 'Reports',
   settings: 'Settings',
   returns: 'Returns & Refunds',
+  restock: 'Smart Restock',
+  dayclose: 'Day Close',
+  leaks: 'Profit Leak Finder',
 };
 
 let currentPage = null;
@@ -62,6 +68,9 @@ function openCommandPalette() {
     { label: 'New sale (POS)', hint: 'Create an invoice', go: 'pos', icon: 'plus' },
     { label: 'AI Assistant', hint: 'Ask about shop data', go: 'assistant', icon: 'sparkle' },
     { label: 'Dashboard', hint: 'Today overview', go: 'dashboard', icon: 'calendar' },
+    { label: 'Smart Restock', hint: 'Demand forecast', go: 'restock', icon: 'alert' },
+    { label: 'Profit Leak Finder', hint: 'Paisa kahan ja raha hai', go: 'leaks', icon: 'chart' },
+    { label: 'Day Close', hint: 'Cash reconciliation', go: 'dayclose', icon: 'wallet' },
     { label: 'Products', hint: 'Inventory', go: 'products', icon: 'bag' },
     { label: 'Sales', hint: 'All invoices', go: 'sales', icon: 'check' },
     { label: 'Returns & refunds', hint: 'Return items', go: 'returns', icon: 'return' },
@@ -415,6 +424,9 @@ function navHTML(active) {
     { id: 'dashboard', label: 'Dashboard', icon: icon('calendar') },
     { id: 'assistant', label: 'AI Assistant', icon: icon('sparkle') },
     { id: 'pos', label: 'POS Billing', icon: icon('plus') },
+    { id: 'restock', label: 'Smart Restock', icon: icon('alert') },
+    { id: 'leaks', label: 'Profit Leaks', icon: icon('chart') },
+    { id: 'dayclose', label: 'Day Close', icon: icon('wallet') },
     { id: 'products', label: 'Products', icon: icon('bag') },
     { id: 'sales', label: 'Sales', icon: icon('check') },
     { id: 'returns', label: 'Returns', icon: icon('return') },

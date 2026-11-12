@@ -4,6 +4,8 @@
 
 import { db, totalReceivable, lowStockProducts } from '../db.js';
 import { icon, esc, emptyState, downloadFile } from '../ui.js';
+import { currentTaxSystem } from '../tax.js';
+import { openBusinessReview } from '../review.js';
 import { toCsv } from '../csv.js';
 
 function money(n) {
@@ -101,12 +103,17 @@ export function render(root) {
           <option value="all" selected>All time</option>
         </select>
         <button class="btn btn-ghost" id="exportReports">${icon('download')} Export CSV</button>
+        <button class="btn btn-primary" id="openReview">${icon('chart')} Business Review</button>
       </div>
     </div>
     <div id="reportBody"></div>`;
 
   const rangeSel = root.querySelector('#reportRange');
   const body = root.querySelector('#reportBody');
+
+  root.querySelector('#openReview').addEventListener('click', () => {
+    if (!openBusinessReview()) toast('Popup block ho gaya — browser allow karein', 'error');
+  });
 
   function filtered() {
     const { from, to } = rangeBounds(rangeSel.value);
@@ -164,9 +171,11 @@ export function render(root) {
     }
     const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
     const avgBill = sales.length ? sales.reduce((a, s) => a + (Number(s.total) || 0), 0) / sales.length : 0;
+    const taxCollected = sales.reduce((a, s) => a + (Number(s.tax) || 0), 0);
+    const taxableSales = sales.reduce((a, s) => a + Math.max(0, (Number(s.total) || 0) - (Number(s.tax) || 0)), 0);
     return {
       sales, expenses, returns, returnsTotal, returnsProfit, revenue, profit, expenseTotal, net,
-      top, topCustomers, payments, cats, avgBill,
+      top, topCustomers, payments, cats, avgBill, taxCollected, taxableSales,
     };
   }
 
@@ -174,8 +183,9 @@ export function render(root) {
     const data = compute();
     const {
       sales, expenses, returns, returnsTotal, revenue, profit, expenseTotal, net,
-      top, topCustomers, payments, cats, avgBill,
+      top, topCustomers, payments, cats, avgBill, taxCollected, taxableSales,
     } = data;
+    const taxInfo = currentTaxSystem();
 
     const low = lowStockProducts();
     const inventoryCost = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
@@ -245,6 +255,19 @@ export function render(root) {
         </div>
       </div>
 
+      <div class="card mt">
+        <div class="card-head"><h3>Tax Summary</h3><span class="right">${esc(taxInfo.system)} · ${esc(taxInfo.rate)}%</span></div>
+        <div class="card-pad">
+          <div class="stat-strip" style="margin-bottom:0">
+            <div><div class="lbl">Taxable sales</div><div class="val">${money(taxableSales)}</div></div>
+            <div><div class="lbl">Tax collected</div><div class="val">${money(taxCollected)}</div></div>
+            <div><div class="lbl">Tax invoices</div><div class="val">${sales.filter((s) => Number(s.tax) > 0).length}</div></div>
+            <div><div class="lbl">Avg tax / bill</div><div class="val">${money(taxCollected / (sales.length || 1))}</div></div>
+          </div>
+          <p class="small muted mt-sm" style="margin-bottom:0">Tax amount sales ke total mein included hai. Returns is summary mein adjust nahi hain.</p>
+        </div>
+      </div>
+
       <div class="grid k2 mt">
         <div class="card">
           <div class="card-head"><h3>Returns & Refunds</h3><span class="right">${returns.length} returns</span></div>
@@ -289,12 +312,12 @@ export function render(root) {
         <div class="card-pad">
           ${
             sales.length
-              ? `<div class="table-wrap"><table style="width:100%"><thead><tr><th style="text-align:left">Invoice</th><th style="text-align:left">Customer</th><th style="text-align:left">Date</th><th style="text-align:left">Payment</th><th style="text-align:right">Total</th></tr></thead><tbody>${sales
+              ? `<div class="table-wrap"><table style="width:100%"><thead><tr><th style="text-align:left">Invoice</th><th style="text-align:left">Customer</th><th style="text-align:left">Date</th><th style="text-align:left">Payment</th><th style="text-align:right">Tax</th><th style="text-align:right">Total</th></tr></thead><tbody>${sales
                   .slice()
                   .reverse()
                   .map(
                     (s) =>
-                      `<tr><td>${esc(s.invoiceNo || s.id)}</td><td>${esc(s.customerName || 'Walk-in')}</td><td>${new Date(s.createdAt).toLocaleDateString('en-GB')}</td><td>${esc(s.paymentMethod || 'Cash')}</td><td style="text-align:right">${money(s.total)}</td></tr>`
+                      `<tr><td>${esc(s.invoiceNo || s.id)}</td><td>${esc(s.customerName || 'Walk-in')}</td><td>${new Date(s.createdAt).toLocaleDateString('en-GB')}</td><td>${esc(s.paymentMethod || 'Cash')}</td><td style="text-align:right">${money(s.tax)}</td><td style="text-align:right">${money(s.total)}</td></tr>`
                   )
                   .join('')}</tbody></table></div>`
               : emptyState('No sales data.')
@@ -316,6 +339,8 @@ export function render(root) {
     rows.push(['Gross profit', data.profit]);
     rows.push(['Expenses', data.expenseTotal]);
     rows.push(['Net profit', data.net]);
+    rows.push(['Taxable sales', data.taxableSales]);
+    rows.push(['Tax collected', data.taxCollected]);
     rows.push(['Invoices', data.sales.length]);
     rows.push(['Returns', data.returns.length]);
     rows.push(['Refund total', data.returnsTotal]);
@@ -350,13 +375,14 @@ export function render(root) {
     }
     rows.push([]);
     rows.push(['Sales', '']);
-    rows.push(['Invoice', 'Date', 'Customer', 'Total', 'Payment']);
+    rows.push(['Invoice', 'Date', 'Customer', 'Total', 'Tax', 'Payment']);
     for (const s of data.sales) {
       rows.push([
         s.invoiceNo || s.id,
         new Date(s.createdAt).toISOString().slice(0, 10),
         s.customerName || 'Walk-in',
         Number(s.total) || 0,
+        Number(s.tax) || 0,
         s.paymentMethod || 'Cash',
       ]);
     }

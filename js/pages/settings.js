@@ -6,11 +6,11 @@ import { db, save, exportDb, importDb, clearAll, loadSampleData, SHOP_TYPES } fr
 import { icon, esc, toast, confirmDialog, downloadFile, linkLabels } from '../ui.js';
 import { getThemeChoice, setThemeChoice } from '../theme.js';
 import { printReceipt } from '../receipt-share.js';
-import { TAX_SYSTEMS, taxSystem } from '../tax.js';
+import { TAX_SYSTEMS, taxSystem, qrSvg, saleVerifyUrl } from '../tax.js';
 
 export const meta = { title: 'Settings', subtitle: 'Shop details, backup and preferences' };
 
-const VERSION = '2.3.0';
+const VERSION = '2.5.0';
 
 function syncShell() {
   const shop = db.settings.shopName || 'My Mart';
@@ -51,6 +51,21 @@ export function render(root) {
   const s = db.settings;
   const shop = s.shopName || 'My Mart';
   let logoData = s.logo || '';
+  const previewTaxRate = Number(s.taxRate) || 0;
+  const previewTax = Math.round(100 * previewTaxRate) / 100;
+  const previewSale = {
+    invoiceNo: 'PREVIEW-001',
+    createdAt: new Date().toISOString(),
+    customerName: 'Walk-in',
+    customerTaxNumber: '1234567-8',
+    items: [{ name: 'Sample item', qty: 1, price: 100 }],
+    subtotal: 100,
+    discount: 0,
+    taxRate: previewTaxRate,
+    tax: previewTax,
+    total: 100 + previewTax,
+  };
+  const previewQr = qrSvg(saleVerifyUrl(previewSale), 3, 2);
 
   root.innerHTML = `
     <div class="page-head">
@@ -185,6 +200,13 @@ export function render(root) {
           </div>
           <div class="form-actions"><button class="btn btn-primary" type="submit">${icon('check')} Save tax settings</button></div>
         </form>
+        <div class="tax-preview mt">
+          <div class="tax-preview-qr">${previewQr || icon('barcode')}</div>
+          <div class="grow">
+            <b>QR preview</b>
+            <span class="hint">Scan karne par tax invoice verification page khulega. Receipt par yahi QR print hota hai.</span>
+          </div>
+        </div>
       </div>
     </div>
 

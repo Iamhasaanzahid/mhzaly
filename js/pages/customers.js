@@ -6,7 +6,12 @@ import { db, uid, save, totalReceivable } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { customerLedger, openStatement } from '../statement.js';
+import { customerRisk, customerSegments } from '../insights.js';
 import { toCsv } from '../csv.js';
+
+function normName(value) {
+  return String(value || '').trim().toLowerCase();
+}
 
 export function render(root) {
   root.innerHTML = `
@@ -25,6 +30,8 @@ export function render(root) {
       <div><div class="lbl">Customers</div><div class="val" id="customerCount">0</div></div>
       <div><div class="lbl">Total udhaar</div><div class="val" id="customerUdhaar">—</div></div>
       <div><div class="lbl">With balance</div><div class="val" id="customerWithBal">0</div></div>
+      <div><div class="lbl">High risk</div><div class="val" id="customerRiskCount">0</div></div>
+      <div><div class="lbl">Champions</div><div class="val" id="customerChampCount">0</div></div>
     </div>
 
     <div class="card">
@@ -39,6 +46,7 @@ export function render(root) {
               <tr>
                 <th style="text-align:left">Name</th>
                 <th style="text-align:left">Phone</th>
+                <th style="text-align:left">Segment</th>
                 <th style="text-align:right">Balance</th>
                 <th style="width:150px"></th>
               </tr>
@@ -47,38 +55,110 @@ export function render(root) {
           </table>
         </div>
       </div>
+    </div>
+
+    <div class="card mt">
+      <div class="card-head">
+        <h3>Customer segments</h3>
+        <span class="right">RFM · recency, frequency, monetary</span>
+      </div>
+      <div class="card-pad">
+        <div id="customerSegments" class="seg-grid"></div>
+      </div>
     </div>`;
 
   function paintSummary() {
     const countEl = root.querySelector('#customerCount');
     const udhaarEl = root.querySelector('#customerUdhaar');
     const withBalEl = root.querySelector('#customerWithBal');
+    const riskEl = root.querySelector('#customerRiskCount');
+    const champEl = root.querySelector('#customerChampCount');
     if (countEl) countEl.textContent = db.customers.length;
     if (udhaarEl) udhaarEl.textContent = money(totalReceivable());
     if (withBalEl) withBalEl.textContent = db.customers.filter((c) => (Number(c.balance) || 0) > 0).length;
+    if (riskEl) {
+      riskEl.textContent = db.customers.filter((c) => (Number(c.balance) || 0) > 0 && customerRisk(c).level === 'High').length;
+    }
+    if (champEl) {
+      champEl.textContent = customerSegments().filter((row) => row.segment === 'Champion').length;
+    }
+  }
+
+  function paintSegments() {
+    const box = root.querySelector('#customerSegments');
+    if (!box) return;
+    const rows = customerSegments();
+    if (!rows.length) {
+      box.innerHTML = '<div class="empty-state">Segment banane ke liye thori sales history chahiye.</div>';
+      return;
+    }
+    const order = ['Champion', 'Loyal', 'Potential', 'At risk', 'Dormant'];
+    const groups = new Map();
+    for (const row of rows) {
+      if (!groups.has(row.segment)) groups.set(row.segment, []);
+      groups.get(row.segment).push(row);
+    }
+    box.innerHTML = order
+      .filter((name) => groups.has(name))
+      .map((name) => {
+        const list = groups.get(name);
+        const tone = list[0].tone;
+        const total = list.reduce((sum, r) => sum + r.monetary, 0);
+        return `<div class="seg-card ${tone}">
+          <div class="seg-head">
+            <span class="badge ${tone}">${name}</span>
+            <b>${list.length}</b>
+          </div>
+          <div class="seg-money">${money(total)}</div>
+          <div class="seg-names">${list.slice(0, 5).map((r) => esc(r.customer.name)).join(', ')}${list.length > 5 ? ` +${list.length - 5}` : ''}</div>
+          <div class="seg-hint">${
+            name === 'Champion'
+              ? 'Best customers — inhe special offer dein'
+              : name === 'Loyal'
+                ? 'Baar baar aate hain — loyalty reward rakhein'
+                : name === 'Potential'
+                  ? 'Ek aur purchase ke liye encourage karein'
+                  : name === 'At risk'
+                    ? 'Purane customers ko reminder bhejein'
+                    : 'Wapas laane ke liye special campaign karein'
+          }</div>
+        </div>`;
+      })
+      .join('');
   }
 
   function renderTable() {
     const q = String(root.querySelector('#customerSearch').value || '').toLowerCase();
+    const segments = new Map(customerSegments().map((row) => [normName(row.customer.name), row]));
     const list = db.customers.filter(
-      (c) => String(c.name || '').toLowerCase().includes(q) || String(c.phone || '').toLowerCase().includes(q)
+      (c) => String(c.name || '').toLowerCase().includes(q) ||
+        String(c.phone || '').toLowerCase().includes(q) ||
+        String(c.taxNumber || '').toLowerCase().includes(q)
     );
 
     if (!list.length) {
       root.querySelector('#customerTableBody').innerHTML = `
-        <tr><td colspan="4"><div class="empty-state">Koi customer nahi mila.</div></td></tr>`;
+        <tr><td colspan="5"><div class="empty-state">Koi customer nahi mila.</div></td></tr>`;
       return;
     }
 
     root.querySelector('#customerTableBody').innerHTML = list
       .map((c) => {
         const bal = Number(c.balance || 0);
+        const risk = customerRisk(c);
+        const seg = segments.get(normName(c.name));
         return `
       <tr>
         <td><b>${esc(c.name)}</b>${c.note ? `<div class="pos-meta">${esc(c.note)}</div>` : ''}</td>
-        <td>${esc(c.phone || '')}</td>
+        <td>${esc(c.phone || '')}${c.taxNumber ? `<div class="pos-meta">Tax: ${esc(c.taxNumber)}</div>` : ''}</td>
+        <td>${
+          seg
+            ? `<span class="badge ${seg.tone}" title="Score ${seg.score}/100 · ${seg.frequency} bills · last ${seg.recencyDays}d">${esc(seg.segment)}</span>`
+            : '<span class="pos-meta">—</span>'
+        }</td>
         <td style="text-align:right">
           ${bal > 0 ? `<span class="badge warn">${money(bal)}</span>` : `<span class="badge ok">${money(0)}</span>`}
+          ${bal > 0 ? `<div class="pos-meta"><span class="badge ${risk.tone}" title="${esc(risk.reason)}">${esc(risk.level)} risk</span></div>` : ''}
         </td>
         <td style="text-align:right; white-space:nowrap">
           <button class="btn btn-ghost btn-sm" data-statement="${esc(c.id)}" title="Statement / ledger">${icon('chart')}</button>
@@ -92,6 +172,7 @@ export function render(root) {
   }
 
   paintSummary();
+  paintSegments();
   renderTable();
   root.querySelector('#customerSearch').addEventListener('input', renderTable);
 

@@ -7,18 +7,19 @@
 import { db, lowStockProducts, totalReceivable } from '../db.js';
 import { icon, esc, toast } from '../ui.js';
 import { money } from '../receipt-share.js';
+import { businessHealth, restockPlan, customerRisk, dayCloseSummary, forecastNext7, taxSummary, profitLeaks, customerSegments } from '../insights.js';
 
 export const meta = { title: 'AI Assistant', subtitle: 'Aap ke shop data se smart jawab' };
 
 const EXAMPLES = [
+  'Business health kaisi hai?',
+  'Paisa kahan leak ho raha hai?',
+  'Restock kya karun?',
+  'Aaj ka cash hisab?',
+  'Kaun customer risky hai?',
+  'Customer segments batao',
+  'Next week ka forecast?',
   'Aaj ki sale kitni hai?',
-  'Is mahine ka profit?',
-  'Low stock products?',
-  'Sab se zyada kya bika?',
-  'Udhaar kitna hai?',
-  'Stock ki value?',
-  'Kal se compare karo',
-  'Top customer?',
 ];
 
 /* ---------- date helpers ---------- */
@@ -218,17 +219,86 @@ function stockValueAnswer() {
   return `<b>📦 Inventory value</b>${stat('Total units', units)}${stat('Cost value', money(cost))}${stat('Sale value', money(sale))}${stat('Potential profit', money(sale-cost))}`;
 }
 function restockAnswer() {
-  const low = lowStockProducts().sort((a,b)=>(a.stock??0)-(b.stock??0));
-  if (!low.length) return `✅ <b>Sab stock theek hai!</b> Koi product restock ki zaroorat nahi.`;
-  let html = `<b>📦 Restock karne wale products (${low.length}):</b><ul>`;
-  for (const p of low.slice(0,10)) {
-    const need = Math.max(1, (Number(p.lowStock)||5) - (Number(p.stock)||0));
-    const approxCost = need * (Number(p.cost)||0);
-    html += `<li><b>${esc(p.name)}</b> — ${p.stock??0} left, approx ${need} lena chahiye (lagbhag ${money(approxCost)})</li>`;
+  const plan = restockPlan({
+    days: 30,
+    leadDays: Number(db.settings.restockLeadDays) || 7,
+    coverDays: Number(db.settings.restockCoverDays) || 14,
+  });
+  if (!plan.reorder.length) return `✅ <b>Sab stock theek hai!</b> Koi product restock ki zaroorat nahi.`;
+  const list = plan.reorder.slice(0, 10).map((row) => {
+    const cover = row.cover == null ? '—' : `${Math.round(row.cover)}d`;
+    return `<li><b>${esc(row.product.name)}</b> — stock ${row.stock}, sold ${row.sold}, cover ${cover}, order <b>${row.suggested}</b> ${esc(row.product.unit || 'pcs')} (${money(row.cost)})</li>`;
+  }).join('');
+  return `<b>📦 Smart restock plan (${plan.reorder.length} products):</b><ul>${list}</ul>${plan.reorder.length > 10 ? `<br>…aur ${plan.reorder.length - 10} products.` : ''}${stat('Estimated purchase', money(plan.totals.cost))}${stat('Dead stock value', money(plan.totals.deadValue))}<br><span style="color:#64748b">Full plan, lead time aur cover days Smart Restock page par adjust karein.</span>`;
+}
+
+function healthAnswer() {
+  const h = businessHealth();
+  const bars = [
+    ['Sales', h.salesScore],
+    ['Profit', h.profitScore],
+    ['Stock', h.stockScore],
+    ['Credit', h.creditScore],
+    ['Expenses', h.expenseScore],
+  ].map(([label, value]) => hbar(label, value, 100, `${value}/100`)).join('');
+  return `<b>🫀 Business Health: ${h.score}/100 — ${h.grade}</b>${bars}${stat('30-day revenue', money(h.revenue))}${stat('Gross profit', money(h.profit))}${stat('Receivable', money(h.receivable))}${stat('Low stock', h.lowCount)}<br><b>Action plan:</b><ul>${h.actions.map((a) => `<li><b>${esc(a.label)}</b> — ${esc(a.detail)}</li>`).join('')}</ul>`;
+}
+
+function creditRiskAnswer() {
+  const list = db.customers
+    .filter((c) => (Number(c.balance) || 0) > 0)
+    .map((c) => ({ customer: c, risk: customerRisk(c) }))
+    .sort((a, b) => b.risk.score - a.risk.score);
+  if (!list.length) return `✅ <b>Koi udhaar baqi nahi.</b> Sab customers clear hain.`;
+  const html = list.slice(0, 12).map(({ customer, risk }) =>
+    `<li><b>${esc(customer.name)}</b> — ${money(customer.balance)} · <span class="badge ${risk.tone}">${risk.level} risk</span><br><span style="color:#64748b">${esc(risk.reason)}</span></li>`
+  ).join('');
+  return `<b>⚠️ Customer credit risk:</b><ul>${html}</ul>${list.length > 12 ? `<br>…aur ${list.length - 12} customers.` : ''}<br><span style="color:#64748b">High risk customers ko pehle reminder bhejein.</span>`;
+}
+
+function dayCloseAnswer() {
+  const s = dayCloseSummary();
+  const existing = (db.closings || []).find((c) => c.date === s.date);
+  const opening = Number(existing?.openingCash) || 0;
+  const expected = opening + s.netCash;
+  return `<b>💰 Aaj ka cash hisab (${s.date})</b>${stat('Cash sales', money(s.cashSales))}${stat('Card sales', money(s.cardSales))}${stat('Online sales', money(s.onlineSales))}${stat('Udhaar sales', money(s.udhaarSales))}${stat('Customer cash in', money(s.cashIn))}${stat('Cash refunds', '− ' + money(s.cashRefunds))}${stat('Cash expenses', '− ' + money(s.cashExpenses))}${stat('Supplier cash out', '− ' + money(s.cashOut))}${stat('Expected drawer cash', money(expected))}${existing ? stat('Saved counted', money(existing.countedCash)) + stat('Variance', money(existing.variance)) : ''}<br><span style="color:#64748b">Day Close page se counted cash reconcile aur closing save karein.</span>`;
+}
+
+function forecastAnswer() {
+  const f = forecastNext7();
+  if (!f.averageDaily) return `📊 Forecast ke liye abhi data kam hai. Kuch sales record karein, phir next 7 days ka estimate milega.`;
+  return `<b>🔮 Next 7 days forecast</b>${stat('Average daily', money(f.averageDaily))}${stat('Predicted daily', money(f.predictedDaily))}${stat('Next 7 days', money(f.predictedWeek))}${stat('Trend', `${f.trend > 0 ? '+' : ''}${Math.round(f.trend * 100)}%`)}${stat('Confidence', `${f.confidence}%`)}<br><span style="color:#64748b">Simple forecast — pichhle 28 din ki sales speed aur recent trend par based.</span>`;
+}
+
+function leakAnswer() {
+  const result = profitLeaks();
+  if (!result.leaks.length) return `✅ <b>Koi leak nahi mila.</b> Aap ka pricing, stock aur expenses sab theek hain.`;
+  const moneyLeaks = result.leaks.filter((l) => l.kind !== 'pricing-upside');
+  const list = result.leaks.slice(0, 8).map((leak) =>
+    `<li><b>${esc(leak.title)}</b> — ${leak.kind === 'pricing-upside' ? '+' : ''}${money(leak.amount)}<br><span style="color:#64748b">${esc(leak.action)}</span></li>`
+  ).join('');
+  return `<b>💧 Profit leak report (${result.leaks.length} leaks):</b><ul>${list}</ul>${stat('Money on the table', money(result.recoverable))}${stat('Pricing upside', money(result.upside))}${stat('30-day revenue', money(result.revenue))}<br><span style="color:#64748b">Poori report Profit Leak Finder page par hai.</span>`;
+}
+
+function segmentAnswer() {
+  const rows = customerSegments();
+  if (!rows.length) return `Abhi customer segments nahi ban sakte — thori sales history chahiye.`;
+  const groups = new Map();
+  for (const row of rows) {
+    if (!groups.has(row.segment)) groups.set(row.segment, []);
+    groups.get(row.segment).push(row);
   }
-  html += '</ul>';
-  if (low.length > 10) html += `<br>…aur ${low.length-10} products.`;
-  return html;
+  const html = [...groups.entries()].map(([name, list]) =>
+    `<li><b>${esc(name)}</b> (${list.length}) — ${list.slice(0, 6).map((r) => esc(r.customer.name)).join(', ')}</li>`
+  ).join('');
+  return `<b>👥 Customer segments:</b><ul>${html}</ul>${stat('Champions', (groups.get('Champion') || []).length)}${stat('At risk / dormant', (groups.get('At risk') || []).length + (groups.get('Dormant') || []).length)}<br><span style="color:#64748b">Customers page par segment badges aur ledger hain.</span>`;
+}
+
+function deadStockAnswer() {
+  const plan = restockPlan({ days: 30 });
+  const dead = plan.rows.filter((row) => row.status === 'dead');
+  if (!dead.length) return `✅ <b>Koi dead stock nahi.</b> Har product ki pichhle 30 din mein sale hui hai.`;
+  return `<b>🧊 Dead stock (30 din se no sale):</b><ul>${dead.slice(0, 12).map((row) => `<li><b>${esc(row.product.name)}</b> — ${row.stock} ${esc(row.product.unit || 'pcs')} stock · ${money(row.deadValue)} capital</li>`).join('')}</ul>${stat('Total dead stock value', money(plan.totals.deadValue))}<br><span style="color:#64748b">Discount, bundle ya supplier return se capital free karein.</span>`;
 }
 function productDetailAnswer(p) {
   const margin = Number(p.price) - (Number(p.cost)||0);
@@ -249,15 +319,50 @@ function answer(raw) {
 
   /* help */
   if (/\b(help|madad|kya kar sakte|kya kar sakti|commands|sikhao|kya poochh sakta)\b/.test(q)) {
-    return `<b>Main ye sab bata sakta hoon:</b><ul><li>Aaj / kal / hafte / mahine ki sale aur profit</li><li>Aaj vs kal ya mahine ka muqabla</li><li>Low stock aur restock kaise karein</li><li>Sab se zyada / kam bikne wale products</li><li>Top customers aur unka udhaar</li><li>Kisi product ka stock, price, margin</li><li>Inventory ki kul value</li><li>Customer ya supplier ka balance</li><li>Kharcha category ke mutabiq</li><li>Tax aur payment method ka hisab</li><li>Aaj ka poora summary</li></ul>Bas apna sawal likhein ya 🎤 mic se bolain.`;
+    return `<b>Main ye sab bata sakta hoon:</b><ul><li>Business health score aur action plan</li><li>Profit leak finder — paisa kahan ja raha hai</li><li>Smart restock, dead stock aur forecast</li><li>Day close / cash reconciliation</li><li>Customer credit risk aur RFM segments</li><li>Aaj / kal / hafte / mahine ki sale aur profit</li><li>Sab se zyada / kam bikne wale products</li><li>Top customers aur unka udhaar</li><li>Kisi product ka stock, price, margin</li><li>Inventory ki kul value</li><li>Customer ya supplier ka balance</li><li>Kharcha category ke mutabiq</li><li>Tax aur payment method ka hisab</li><li>Aaj ka poora summary</li></ul>Bas apna sawal likhein ya 🎤 mic se bolain.`;
   }
 
-  /* low stock / out of stock */
+  /* low stock / out of stock (before health so "restock kya karun" wins) */
   if (/\b(low stock|stock kam|kam stock|khatam|out of stock|reorder|stock alert|restock)\b/.test(q)) {
-    if (/restock|reorder/.test(q)) return restockAnswer();
+    if (/restock|reorder|order|maal mangwa|kya order/.test(q)) return restockAnswer();
     const low = lowStockProducts().sort((a,b)=>(a.stock??0)-(b.stock??0));
     if (!low.length) return `✅ <b>Sab stock theek hai!</b> Koi product low stock mein nahi.`;
     return `<b>⚠️ Low stock / khatam hone wale products (${low.length}):</b><ul>${low.slice(0,12).map((p)=>`<li><b>${esc(p.name)}</b> — ${p.stock??0} left <span style="color:#64748b">(alert ${p.lowStock??5})</span></li>`).join('')}</ul>${low.length>12?'<br>…aur baaki Products page par.':''}`;
+  }
+
+  /* business health / pulse score */
+  if (/\b(business health|health score|pulse|business score|action plan|kya karun|improve|halat|kaisa chal raha)\b/.test(q)) {
+    return healthAnswer();
+  }
+
+  /* customer credit risk */
+  if (/\b(credit risk|risk|risky|udhaar risk|default|recovery|reminder)\b/.test(q)) {
+    return creditRiskAnswer();
+  }
+
+  /* day close / cash reconciliation */
+  if (/\b(day close|close day|cash close|cash hisab|cash account|galla|drawer|reconciliation|reconcile|over short|short cash|nakad)\b/.test(q)) {
+    return dayCloseAnswer();
+  }
+
+  /* forecast */
+  if (/\b(forecast|prediction|predict|next week|agle hafte|future sale|expected sale)\b/.test(q)) {
+    return forecastAnswer();
+  }
+
+  /* dead stock */
+  if (/\b(dead stock|slow moving|no sale|nahi bik|non moving|phansa|capital)\b/.test(q)) {
+    return deadStockAnswer();
+  }
+
+  /* profit leaks */
+  if (/\b(leak|leaks|profit leak|paisa kahan|paise kahan|nuqsaan|kahan jaa raha|money leak|zyada kharcha|ganda)\b/.test(q)) {
+    return leakAnswer();
+  }
+
+  /* customer segments */
+  if (/\b(segment|segments|champion|loyal|dormant|customer group|rfm|best customers)\b/.test(q)) {
+    return segmentAnswer();
   }
 
   /* best / worst day */
@@ -355,10 +460,12 @@ function answer(raw) {
 
   /* tax */
   if (/\b(tax|gst)\b/.test(q)) {
-    const rate = Number(db.settings.taxRate)||0;
+    const rate = Number(db.settings.taxRate) || 0;
     const kind = detectRange(q);
-    const tax = salesIn(kind).reduce((a,s)=>a+(Number(s.tax)||0),0);
-    return `<b>🧮 Tax setting:</b> ${rate}%<br><b>${RANGE_LABEL[kind]} tax collected:</b> ${money(tax)}<br><span style="color:#64748b">Tax rate Settings → Billing preferences se change hota hai.</span>`;
+    const sales = salesIn(kind);
+    const tax = sales.reduce((a, s) => a + (Number(s.tax) || 0), 0);
+    const total = sales.reduce((a, s) => a + (Number(s.total) || 0), 0);
+    return `<b>🧮 Tax setting:</b> ${rate}% · ${esc(db.settings.taxSystem || 'GST')} · ${esc(db.settings.taxCountry || 'PK')}<br><b>${RANGE_LABEL[kind]} tax collected:</b> ${money(tax)}<br><b>Taxable sales:</b> ${money(Math.max(0, total - tax))}<br><b>Tax invoices:</b> ${sales.filter((s) => Number(s.tax) > 0).length}<br><span style="color:#64748b">Pichhle 30 din tax: ${money(taxSummary(30).tax)} · Reports → Tax Summary mein full detail.</span>`;
   }
 
   /* specific payment collection */
