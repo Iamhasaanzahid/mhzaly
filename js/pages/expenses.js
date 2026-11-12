@@ -3,10 +3,21 @@
    ============================================================ */
 
 import { db, uid, save } from '../db.js';
-import { icon, esc, toast, openModal, confirmDialog } from '../ui.js';
+import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
+import { toCsv } from '../csv.js';
 
 const CATEGORIES = ['Rent', 'Utilities', 'Salary', 'Transport', 'Other'];
+
+function rangeStart(range) {
+  if (range === 'all') return null;
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (range === 'today') return d;
+  const days = Number(range);
+  d.setDate(d.getDate() - (days - 1));
+  return d;
+}
 
 export function render(root) {
   root.innerHTML = `
@@ -16,14 +27,32 @@ export function render(root) {
         <p>Record rent, utilities, salary and other costs.</p>
       </div>
       <div class="head-actions">
+        <select class="input" id="expenseRange" style="width:auto;min-width:130px">
+          <option value="all" selected>All time</option>
+          <option value="today">Today</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn btn-ghost" id="exportExpenses">${icon('download')} Export CSV</button>
         <button class="btn btn-primary" id="addExpenseBtn">${icon('plus')} Add Expense</button>
       </div>
     </div>
 
     <div class="card mt">
+      <div class="card-head"><h3>Expense records</h3><span class="right" id="expenseTotal">—</span></div>
       <div class="card-pad">
+        <div class="filter-row">
+          <div class="field grow">
+            <label>Search</label>
+            <input class="input" id="expenseSearch" placeholder="Title, category or note" />
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select class="input" id="expenseCategory"></select>
+          </div>
+        </div>
         <div class="table-wrap">
-          <table style="width:100%">
+          <table style="width:100%;margin-top:10px">
             <thead>
               <tr>
                 <th style="text-align:left">Title</th>
@@ -39,11 +68,48 @@ export function render(root) {
       </div>
     </div>`;
 
+  const searchEl = root.querySelector('#expenseSearch');
+  const rangeEl = root.querySelector('#expenseRange');
+  const categoryEl = root.querySelector('#expenseCategory');
+
+  function paintCategories() {
+    const current = categoryEl.value || 'all';
+    const list = [...new Set([...CATEGORIES, ...db.expenses.map((e) => e.category || 'Other')])].sort((a, b) => a.localeCompare(b));
+    categoryEl.innerHTML = `<option value="all">All categories</option>${list
+      .map((c) => `<option value="${esc(c)}">${esc(c)}</option>`)
+      .join('')}`;
+    categoryEl.value = list.includes(current) ? current : 'all';
+  }
+
+  function filtered() {
+    const q = String(searchEl.value || '').toLowerCase().trim();
+    const from = rangeStart(rangeEl.value);
+    const category = categoryEl.value;
+    return db.expenses
+      .filter((e) => {
+        const matchesQuery =
+          !q ||
+          String(e.title || '').toLowerCase().includes(q) ||
+          String(e.category || '').toLowerCase().includes(q) ||
+          String(e.note || '').toLowerCase().includes(q);
+        const matchesRange = !from || new Date(e.createdAt || 0) >= from;
+        const matchesCategory = category === 'all' || (e.category || 'Other') === category;
+        return matchesQuery && matchesRange && matchesCategory;
+      })
+      .slice()
+      .reverse();
+  }
+
   function renderTable() {
-    const list = db.expenses.slice().reverse();
+    const list = filtered();
+    const totalEl = root.querySelector('#expenseTotal');
+    if (totalEl) {
+      const total = list.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+      totalEl.textContent = `${list.length} entries · ${money(total)}`;
+    }
     if (!list.length) {
       root.querySelector('#expenseTableBody').innerHTML = `
-        <tr><td colspan="5"><div class="empty-state">Abhi koi expense record nahi hui.</div></td></tr>`;
+        <tr><td colspan="5"><div class="empty-state">Is filter mein koi expense record nahi.</div></td></tr>`;
       return;
     }
     root.querySelector('#expenseTableBody').innerHTML = list
@@ -62,7 +128,11 @@ export function render(root) {
       .join('');
   }
 
+  paintCategories();
   renderTable();
+  searchEl.addEventListener('input', renderTable);
+  rangeEl.addEventListener('change', renderTable);
+  categoryEl.addEventListener('change', renderTable);
 
   function openForm() {
     openModal({
@@ -107,6 +177,7 @@ export function render(root) {
             createdAt: dateVal ? new Date(dateVal + 'T12:00:00').toISOString() : new Date().toISOString(),
           });
           save();
+          paintCategories();
           renderTable();
           toast('Expense recorded', 'success');
           bd.remove();
@@ -130,8 +201,24 @@ export function render(root) {
     confirmDialog(`"${item.title}" delete karein?`, () => {
       db.expenses = db.expenses.filter((x) => x.id !== item.id);
       save();
+      paintCategories();
       renderTable();
       toast('Expense deleted', 'success');
     });
+  });
+
+  root.querySelector('#exportExpenses').addEventListener('click', () => {
+    const rows = [['Date', 'Title', 'Category', 'Amount', 'Note']];
+    for (const e of filtered()) {
+      rows.push([
+        new Date(e.createdAt).toISOString().slice(0, 10),
+        e.title || '',
+        e.category || 'Other',
+        Number(e.amount) || 0,
+        e.note || '',
+      ]);
+    }
+    downloadFile(`mhzaly-expenses-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
+    toast('Expenses exported', 'success');
   });
 }

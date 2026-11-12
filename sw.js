@@ -1,5 +1,5 @@
 /* Service worker — offline support (network-first, cache fallback) */
-const CACHE = 'mhzaly-v25';
+const CACHE = 'mhzaly-v27';
 const ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,10 @@ const ASSETS = [
   './js/sample.js',
   './js/receipt.js',
   './js/receipt-share.js',
+  './js/csv.js',
+  './js/statement.js',
+  './js/tax.js',
+  './js/vendor/qrcode.js',
   './js/pages/auth.js',
   './js/pages/dashboard.js',
   './js/pages/assistant.js',
@@ -36,6 +40,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

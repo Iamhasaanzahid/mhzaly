@@ -47,6 +47,8 @@ let currentPage = null;
 
 /* ---------- install prompt & command palette ---------- */
 let deferredInstall = null;
+let swRegistration = null;
+let swRefreshing = false;
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -69,6 +71,7 @@ function openCommandPalette() {
     { label: 'Expenses', hint: 'Record costs', go: 'expenses', icon: 'alert' },
     { label: 'Reports', hint: 'Profit & summary', go: 'reports', icon: 'chart' },
     { label: 'Settings', hint: 'Shop & backup', go: 'settings', icon: 'settings' },
+    { label: 'Keyboard shortcuts', hint: 'Shortcut help', shortcuts: true, icon: 'settings' },
     { label: 'Toggle dark mode', hint: 'Theme', theme: true, icon: 'moon' },
   ];
   openModal({
@@ -89,6 +92,7 @@ function openCommandPalette() {
         if (!a) return;
         bd.remove();
         if (a.theme) toggleTheme();
+        else if (a.shortcuts) openShortcutsHelp();
         else if (a.go) navigate('#/' + a.go);
       };
       paint();
@@ -109,6 +113,54 @@ function openCommandPalette() {
   });
 }
 
+function openShortcutsHelp() {
+  openModal({
+    title: 'Keyboard shortcuts',
+    subtitle: 'Kaam tez karne ke liye',
+    body: `
+      <div class="shortcut-list">
+        <div><kbd>Ctrl</kbd> + <kbd>K</kbd><span>AI Assistant</span></div>
+        <div><kbd>Ctrl</kbd> + <kbd>/</kbd><span>Quick actions</span></div>
+        <div><kbd>?</kbd><span>Ye shortcut list</span></div>
+        <div><kbd>Esc</kbd><span>Modal band karein</span></div>
+        <div><kbd>Enter</kbd><span>Search result / form save</span></div>
+      </div>
+      <p class="small muted" style="margin:12px 0 0">Tip: POS mein barcode scan karne ke liye search box mein scan karein — Enter dabate hi item add ho jata hai.</p>`,
+    footer: `<button class="btn btn-primary" data-modal-close>Got it</button>`,
+  });
+}
+
+function showUpdateBanner(reg) {
+  if (document.querySelector('.update-banner')) return;
+  const banner = document.createElement('div');
+  banner.className = 'update-banner';
+  banner.innerHTML = `
+    <div class="update-banner-ico">${icon('sparkle')}</div>
+    <div class="grow">
+      <b>New version available</b>
+      <span>Refresh karein taake latest mhzaly features mil jayein.</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" data-update-later>Later</button>
+    <button class="btn btn-primary btn-sm" data-update-now>Refresh</button>`;
+  document.body.appendChild(banner);
+  banner.querySelector('[data-update-later]').addEventListener('click', () => banner.remove());
+  banner.querySelector('[data-update-now]').addEventListener('click', () => {
+    swRefreshing = true;
+    const waiting = reg?.waiting || swRegistration?.waiting;
+    if (waiting) {
+      waiting.postMessage({ type: 'SKIP_WAITING' });
+      setTimeout(() => {
+        if (swRefreshing) {
+          swRefreshing = false;
+          location.reload();
+        }
+      }, 900);
+    } else {
+      location.reload();
+    }
+  });
+}
+
 function renderAuthView() {
   const hash = location.hash.replace(/^#\/?/, '');
   const mode = hash === 'register' ? 'register' : 'login';
@@ -126,7 +178,23 @@ export function init() {
     if (btn) btn.innerHTML = icon(resolved === 'dark' ? 'sun' : 'moon');
   });
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      swRegistration = reg;
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg);
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        if (!worker) return;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner(reg);
+        });
+      });
+    }).catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swRefreshing) {
+        swRefreshing = false;
+        location.reload();
+      }
+    });
   }
   const params = new URLSearchParams(location.search);
   if (params.get('logout') === '1') {
@@ -191,7 +259,7 @@ function shell() {
     <div class="layout">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
-          <div class="brand-logo">${icon('bag')}</div>
+          <div class="brand-logo">${db.settings.logo ? `<img src="${esc(db.settings.logo)}" alt="" />` : icon('bag')}</div>
           <div>
             <div class="brand-name">mhzaly</div>
             <div class="brand-sub">${esc(shop)}</div>
@@ -263,6 +331,11 @@ function shell() {
       if ((e.ctrlKey || e.metaKey) && String(e.key) === '/') {
         e.preventDefault();
         openCommandPalette();
+      }
+      const tag = (e.target && e.target.tagName) || '';
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+        e.preventDefault();
+        openShortcutsHelp();
       }
     });
   }

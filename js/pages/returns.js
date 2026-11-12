@@ -277,4 +277,12 @@ export function render(root) {
 
   paintSales();
   paintHistory();
+
+  // Opened from Sales page ("Return" button) — auto-select that invoice.
+  const pendingReturn = sessionStorage.getItem('mhzaly_open_return');
+  if (pendingReturn) {
+    sessionStorage.removeItem('mhzaly_open_return');
+    const pendingSale = db.sales.find((s) => s.id === pendingReturn);
+    if (pendingSale) setTimeout(() => openReturn(pendingSale), 100);
+  }
 }

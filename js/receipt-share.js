@@ -3,6 +3,7 @@
    ============================================================ */
 
 import { db } from './db.js';
+import { currentTaxSystem, saleTaxPayload, qrDataUrl } from './tax.js';
 
 function settings() {
   return db.settings || {};
@@ -61,9 +62,12 @@ export function receiptText(sale) {
   const fmt = (n) => `${cur} ${Number(n || 0).toLocaleString()}`;
   const lines = [];
 
+  const taxInfo = currentTaxSystem();
   lines.push(`*${s.shopName || 'My Mart'}*`);
   if (s.address) lines.push(`📍 ${s.address}`);
   if (s.phone) lines.push(`📞 ${s.phone}`);
+  if (s.taxNumber) lines.push(`🧾 Seller ${taxInfo.numberLabel}: ${s.taxNumber}`);
+  if (sale.customerTaxNumber) lines.push(`👤 Buyer ${taxInfo.numberLabel}: ${sale.customerTaxNumber}`);
   lines.push('━━━━━━━━━━━━━━━');
   lines.push(`🧾 Invoice: ${sale.invoiceNo || sale.id}`);
   lines.push(`📅 ${formatDate(sale.createdAt)}`);
@@ -89,6 +93,10 @@ export function receiptText(sale) {
   lines.push(`*Total: ${fmt(total)}*`);
   lines.push(`💳 Payment: ${sale.paymentMethod || 'Cash'}`);
   if (s.receiptNote) lines.push('', s.receiptNote);
+  if (s.receiptTerms) lines.push('', s.receiptTerms);
+  if (s.receiptQr !== false && (s.taxNumber || sale.customerTaxNumber || tax > 0)) {
+    lines.push('', '🔳 Tax QR code printed receipt par hai.');
+  }
   lines.push('', '_Powered by mhzaly_');
   return lines.join('\n');
 }
@@ -102,8 +110,26 @@ export function receiptHtml(sale) {
   const fmt = (n) => `${cur} ${Number(n || 0).toLocaleString()}`;
   const shopName = s.shopName || 'My Mart';
   const initials = escapeHtml(shopInitials(shopName));
+  const logo = s.logo
+    ? `<img class="logo-img" src="${escapeHtml(s.logo)}" alt="" />`
+    : `<div class="logo">${initials}</div>`;
   const customer = (sale.customerName && sale.customerName !== 'Walk-in') ? sale.customerName : '';
   const note = s.receiptNote || 'Thank you for shopping with us!';
+  const terms = s.receiptTerms || '';
+  const taxInfo = currentTaxSystem();
+  const shopTax = s.taxNumber || '';
+  const buyerTax = sale.customerTaxNumber || '';
+  const showTax = Boolean(shopTax || buyerTax || tax > 0);
+  const qr = s.receiptQr !== false && showTax ? qrDataUrl(saleTaxPayload(sale), 4, 2) : '';
+  const taxBox = showTax
+    ? `<div class="tax-box">
+        <div class="tax-title">${escapeHtml(taxInfo.system)} Tax Invoice</div>
+        ${shopTax ? `<div><span>Seller ${escapeHtml(taxInfo.numberLabel)}</span><b>${escapeHtml(shopTax)}</b></div>` : ''}
+        ${buyerTax ? `<div><span>Buyer ${escapeHtml(taxInfo.numberLabel)}</span><b>${escapeHtml(buyerTax)}</b></div>` : ''}
+        <div><span>Tax rate</span><b>${Number(sale.taxRate) || 0}%</b></div>
+        <div><span>Tax amount</span><b>${fmt(tax)}</b></div>
+      </div>`
+    : '';
 
   const rows = items.map((it) => {
     const qty = Number(it.qty) || 1;
@@ -143,6 +169,10 @@ export function receiptHtml(sale) {
     color: #fff; display: flex; align-items: center; justify-content: center;
     font-weight: 800; font-size: 18px; margin: 0 auto 7px;
   }
+  .logo-img {
+    width: 46px; height: 46px; object-fit: contain;
+    margin: 0 auto 7px; display: block; border-radius: 8px;
+  }
   .shop { font-size: 17px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; }
   .muted { color: #64748b; font-size: 10.5px; line-height: 1.5; }
   .dash { border: 0; border-top: 1px dashed #cbd5e1; margin: 8px 0; }
@@ -168,6 +198,21 @@ export function receiptHtml(sale) {
     border-radius: 99px; padding: 3px 10px; font-size: 9.5px; font-weight: 700; color: #334155;
   }
   .thanks { text-align: center; margin-top: 10px; font-size: 11px; font-weight: 600; line-height: 1.5; }
+  .terms { text-align: center; margin-top: 6px; font-size: 9.5px; color: #64748b; line-height: 1.45; }
+  .tax-box {
+    margin-top: 9px; border: 1px solid #e2e8f0; border-radius: 7px;
+    padding: 7px 9px; font-size: 9.5px; background: #f8fafc;
+  }
+  .tax-title {
+    text-align: center; font-weight: 800; font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: #0f766e; margin-bottom: 5px;
+  }
+  .tax-box > div:not(.tax-title) { display: flex; justify-content: space-between; gap: 8px; padding: 1.5px 0; }
+  .tax-box span { color: #64748b; }
+  .tax-box b { font-weight: 700; text-align: right; }
+  .qr-box { text-align: center; margin-top: 10px; }
+  .qr-img { width: 92px; height: 92px; image-rendering: pixelated; }
+  .qr-label { font-size: 8px; color: #64748b; letter-spacing: .04em; margin-top: 2px; }
   .brand {
     text-align: center; margin-top: 9px; font-size: 8.5px; color: #94a3b8;
     letter-spacing: .12em; text-transform: uppercase;
@@ -176,10 +221,11 @@ export function receiptHtml(sale) {
 <body>
   <div class="receipt">
     <div class="top">
-      <div class="logo">${initials}</div>
+      ${logo}
       <div class="shop">${escapeHtml(shopName)}</div>
       ${s.address ? `<div class="muted">${escapeHtml(s.address)}</div>` : ''}
       ${s.phone ? `<div class="muted">Phone: ${escapeHtml(s.phone)}</div>` : ''}
+      ${s.taxNumber ? `<div class="muted">${escapeHtml(taxInfo.numberLabel)}: ${escapeHtml(s.taxNumber)}</div>` : ''}
     </div>
 
     <hr class="dash">
@@ -204,7 +250,11 @@ export function receiptHtml(sale) {
 
     <div style="margin-top:8px;text-align:center"><span class="pill">${escapeHtml(sale.paymentMethod || 'Cash')}</span></div>
 
+    ${taxBox}
+    ${qr ? `<div class="qr-box"><img class="qr-img" src="${qr}" alt="Tax QR" /><div class="qr-label">Scan to verify tax invoice</div></div>` : ''}
+
     <div class="thanks">${escapeHtml(note)}</div>
+    ${terms ? `<div class="terms">${escapeHtml(terms)}</div>` : ''}
     <div class="brand">Powered by mhzaly</div>
   </div>
 </body></html>`;

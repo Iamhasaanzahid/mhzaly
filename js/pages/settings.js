@@ -5,10 +5,12 @@
 import { db, save, exportDb, importDb, clearAll, loadSampleData, SHOP_TYPES } from '../db.js';
 import { icon, esc, toast, confirmDialog, downloadFile, linkLabels } from '../ui.js';
 import { getThemeChoice, setThemeChoice } from '../theme.js';
+import { printReceipt } from '../receipt-share.js';
+import { TAX_SYSTEMS, taxSystem } from '../tax.js';
 
 export const meta = { title: 'Settings', subtitle: 'Shop details, backup and preferences' };
 
-const VERSION = '2.1.0';
+const VERSION = '2.3.0';
 
 function syncShell() {
   const shop = db.settings.shopName || 'My Mart';
@@ -16,11 +18,36 @@ function syncShell() {
   if (brandSub) brandSub.textContent = shop;
   const who = document.querySelector('.sidebar-foot .who');
   if (who) who.textContent = db.settings.ownerName || 'Shop Owner';
+  const brandLogo = document.querySelector('.brand-logo');
+  if (brandLogo) {
+    brandLogo.innerHTML = db.settings.logo
+      ? `<img src="${esc(db.settings.logo)}" alt="" />`
+      : icon('bag');
+  }
+}
+
+function sampleSale() {
+  return {
+    invoiceNo: 'PREVIEW-001',
+    createdAt: new Date().toISOString(),
+    customerName: 'Walk-in',
+    items: [
+      { name: 'Sample item A', qty: 2, price: 120 },
+      { name: 'Sample item B', qty: 1, price: 250 },
+    ],
+    subtotal: 490,
+    discount: 0,
+    tax: 0,
+    total: 490,
+    paymentMethod: 'Cash',
+  };
 }
 
 export function render(root) {
   const s = db.settings;
   const shop = s.shopName || 'My Mart';
+  let logoData = s.logo || '';
+
   root.innerHTML = `
     <div class="page-head">
       <div class="grow">
@@ -33,6 +60,17 @@ export function render(root) {
       <div class="card">
         <div class="card-head"><h3>Shop details</h3><div class="right"><span class="hint">Shown on receipts</span></div></div>
         <div class="card-pad">
+          <div class="logo-upload">
+            <div class="logo-preview" id="logoPreview">${logoData ? `<img src="${esc(logoData)}" alt="" />` : icon('bag')}</div>
+            <div class="grow">
+              <div class="logo-actions">
+                <label class="btn btn-ghost btn-sm" for="logoFile">${icon('upload')} Upload logo</label>
+                <button class="btn btn-ghost btn-sm" type="button" id="logoRemove">Remove</button>
+              </div>
+              <span class="hint">PNG/JPG, max 2MB. Logo receipt aur sidebar par show hoga. Save shop details dabayein.</span>
+              <input type="file" id="logoFile" accept="image/*" hidden />
+            </div>
+          </div>
           <form id="shopForm">
             <div class="form-grid">
               <div class="field full">
@@ -62,6 +100,10 @@ export function render(root) {
                 <label>Receipt footer note</label>
                 <input class="input" name="receiptNote" value="${esc(s.receiptNote)}" placeholder="Thank you!" />
               </div>
+              <div class="field full">
+                <label>Receipt terms / policy (optional)</label>
+                <textarea class="input" name="receiptTerms" rows="2" placeholder="e.g. Exchange within 7 days with receipt.">${esc(s.receiptTerms || '')}</textarea>
+              </div>
             </div>
             <div class="alert-box mt" style="background:#f8fafc;border-color:#e2e8f0;color:#334155">
               ${icon('alert')}
@@ -83,19 +125,62 @@ export function render(root) {
                 <label>Currency symbol</label>
                 <input class="input" name="currency" value="${esc(s.currency)}" maxlength="4" placeholder="Rs" />
               </div>
-              <div class="field">
-                <label>Tax / GST rate (%)</label>
-                <input class="input" name="taxRate" type="number" min="0" max="100" step="any" value="${esc(s.taxRate)}" />
-              </div>
               <div class="field full">
                 <label>Default low-stock alert level</label>
                 <input class="input" name="lowStock" type="number" min="0" step="any" value="${esc(s.lowStock)}" />
                 <span class="hint">Used for new products. Each product can have its own level.</span>
               </div>
             </div>
-            <div class="form-actions"><button class="btn btn-primary" type="submit">${icon('check')} Save preferences</button></div>
+            <div class="form-actions">
+              <button class="btn btn-ghost" type="button" id="previewReceipt">${icon('eye')} Receipt preview</button>
+              <button class="btn btn-primary" type="submit">${icon('check')} Save preferences</button>
+            </div>
           </form>
         </div>
+      </div>
+    </div>
+
+    <div class="card mt">
+      <div class="card-head">
+        <h3>Tax &amp; compliance</h3>
+        <div class="right"><span class="badge teal" id="taxCountryBadge">${esc(taxSystem(s.taxCountry || 'PK').countryName)}</span></div>
+      </div>
+      <div class="card-pad">
+        <p class="small muted" style="margin-top:0">Receipt par seller aur buyer ka tax number, tax rate aur QR code show hota hai. Pakistan default hai — apna NTN/STRN likhein.</p>
+        <form id="taxForm">
+          <div class="form-grid">
+            <div class="field">
+              <label>Country / tax system</label>
+              <select class="input" name="taxCountry" id="taxCountry">
+                ${TAX_SYSTEMS.map((t) => `<option value="${t.country}" ${t.country === (s.taxCountry || 'PK') ? 'selected' : ''}>${esc(t.countryName)} — ${esc(t.system)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>Tax name</label>
+              <input class="input" name="taxSystem" id="taxSystem" value="${esc(s.taxSystem || 'GST')}" placeholder="GST / VAT / Sales Tax" />
+            </div>
+            <div class="field">
+              <label id="taxNumberLabel">${esc(taxSystem(s.taxCountry || 'PK').numberLabel)}</label>
+              <input class="input" name="taxNumber" id="taxNumber" value="${esc(s.taxNumber || '')}" placeholder="${esc(taxSystem(s.taxCountry || 'PK').example || 'Tax number')}" />
+            </div>
+            <div class="field">
+              <label>Default tax rate (%)</label>
+              <div class="input-group">
+                <input class="input" name="taxRate" id="taxRate" type="number" min="0" max="100" step="any" value="${esc(s.taxRate)}" />
+                <button class="btn btn-ghost btn-sm" type="button" id="useRecommendedTax">Use ${esc(taxSystem(s.taxCountry || 'PK').rate)}%</button>
+              </div>
+            </div>
+            <div class="field full">
+              <label class="check-inline"><input type="checkbox" name="receiptQr" ${s.receiptQr !== false ? 'checked' : ''} /> Receipt par tax QR code show karein</label>
+              <span class="hint">QR offline generate hota hai — internet ki zaroorat nahi. Scan karne par invoice, tax numbers aur total nazar aayega.</span>
+            </div>
+          </div>
+          <div class="alert-box mt" id="taxHint" style="background:#f0fdfa;border-color:#99f6e4;color:#115e59">
+            ${icon('alert')}
+            <div>${esc(taxSystem(s.taxCountry || 'PK').hint)}</div>
+          </div>
+          <div class="form-actions"><button class="btn btn-primary" type="submit">${icon('check')} Save tax settings</button></div>
+        </form>
       </div>
     </div>
 
@@ -174,6 +259,9 @@ export function render(root) {
           <span class="badge">Returns & refunds</span>
           <span class="badge">Hold bills</span>
           <span class="badge">Udhaar khata</span>
+          <span class="badge">Customer statements</span>
+          <span class="badge">CSV import / export</span>
+          <span class="badge">Receipt logo & tax</span>
           <span class="badge">Purchases</span>
           <span class="badge">Reports</span>
           <span class="badge">Cloud sync</span>
@@ -184,6 +272,38 @@ export function render(root) {
 
   syncShell();
   const rerender = () => { render(root); linkLabels(root); };
+
+  function updateLogoPreview() {
+    const el = root.querySelector('#logoPreview');
+    if (!el) return;
+    el.innerHTML = logoData ? `<img src="${esc(logoData)}" alt="" />` : icon('bag');
+  }
+
+  root.querySelector('#logoFile').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      toast('Sirf image file choose karein', 'error');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast('Logo 2MB se chhota hona chahiye', 'error');
+      return;
+    }
+    try {
+      logoData = await resizeImage(file, 240);
+      updateLogoPreview();
+      toast('Logo ready — Save shop details dabayein', 'success');
+    } catch (err) {
+      toast(err.message || 'Logo load nahi ho saka', 'error');
+    }
+  });
+
+  root.querySelector('#logoRemove').addEventListener('click', () => {
+    logoData = '';
+    updateLogoPreview();
+    toast('Logo remove hoga — Save shop details dabayein');
+  });
 
   root.querySelectorAll('[data-theme-choice]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -203,6 +323,8 @@ export function render(root) {
     db.settings.phone = String(fd.get('phone') || '').trim();
     db.settings.address = String(fd.get('address') || '').trim();
     db.settings.receiptNote = String(fd.get('receiptNote') || '').trim();
+    db.settings.receiptTerms = String(fd.get('receiptTerms') || '').trim();
+    db.settings.logo = logoData;
     save();
     syncShell();
     toast('Shop details saved');
@@ -212,14 +334,47 @@ export function render(root) {
   root.querySelector('#prefForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const tax = Number(fd.get('taxRate'));
     const low = Number(fd.get('lowStock'));
     db.settings.currency = String(fd.get('currency') || 'Rs').trim() || 'Rs';
-    db.settings.taxRate = Number.isFinite(tax) && tax >= 0 && tax <= 100 ? tax : 0;
     db.settings.lowStock = Number.isFinite(low) && low >= 0 ? low : 5;
     save();
     toast('Preferences saved');
     rerender();
+  });
+
+  root.querySelector('#taxCountry').addEventListener('change', (e) => {
+    const t = taxSystem(e.target.value);
+    root.querySelector('#taxSystem').value = t.system;
+    root.querySelector('#taxNumberLabel').textContent = t.numberLabel;
+    root.querySelector('#taxCountryBadge').textContent = t.countryName;
+    root.querySelector('#taxHint').innerHTML = `${icon('alert')}<div>${esc(t.hint)}</div>`;
+    root.querySelector('#taxNumber').placeholder = t.example || 'Tax number';
+    root.querySelector('#useRecommendedTax').textContent = `Use ${t.rate}%`;
+  });
+
+  root.querySelector('#useRecommendedTax').addEventListener('click', () => {
+    const t = taxSystem(root.querySelector('#taxCountry').value);
+    root.querySelector('#taxRate').value = t.rate;
+    toast(`Recommended ${t.system} rate: ${t.rate}%`, 'success');
+  });
+
+  root.querySelector('#taxForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const rate = Number(fd.get('taxRate'));
+    db.settings.taxCountry = String(fd.get('taxCountry') || 'PK');
+    db.settings.taxSystem = String(fd.get('taxSystem') || '').trim() || taxSystem(db.settings.taxCountry).system;
+    db.settings.taxNumber = String(fd.get('taxNumber') || '').trim();
+    db.settings.taxRate = Number.isFinite(rate) && rate >= 0 && rate <= 100 ? rate : 0;
+    db.settings.receiptQr = fd.get('receiptQr') === 'on';
+    save();
+    toast('Tax settings saved');
+    rerender();
+  });
+
+  root.querySelector('#previewReceipt').addEventListener('click', () => {
+    const latest = db.sales[db.sales.length - 1];
+    printReceipt(latest || sampleSale());
   });
 
   root.querySelector('#exportBackup').addEventListener('click', () => {
@@ -262,6 +417,31 @@ export function render(root) {
       toast('All data cleared');
       rerender();
     });
+  });
+}
+
+function resizeImage(file, maxSize = 240) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width || 1, img.height || 1));
+        const width = Math.max(1, Math.round((img.width || 1) * scale));
+        const height = Math.max(1, Math.round((img.height || 1) * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas support nahi hai'));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => reject(new Error('Image load nahi ho saki'));
+      img.src = String(reader.result || '');
+    };
+    reader.onerror = () => reject(new Error('File read nahi ho saki'));
+    reader.readAsDataURL(file);
   });
 }
 

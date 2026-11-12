@@ -3,8 +3,19 @@
    ============================================================ */
 
 import { db, uid, save } from '../db.js';
-import { icon, esc, toast, openModal, confirmDialog } from '../ui.js';
+import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
+import { toCsv } from '../csv.js';
+
+function rangeStart(range) {
+  if (range === 'all') return null;
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (range === 'today') return d;
+  const days = Number(range);
+  d.setDate(d.getDate() - (days - 1));
+  return d;
+}
 
 export function render(root) {
   root.innerHTML = `
@@ -14,14 +25,32 @@ export function render(root) {
         <p>Record supplier purchases and update stock.</p>
       </div>
       <div class="head-actions">
+        <select class="input" id="purchaseRange" style="width:auto;min-width:130px">
+          <option value="all" selected>All time</option>
+          <option value="today">Today</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn btn-ghost" id="exportPurchases">${icon('download')} Export CSV</button>
         <button class="btn btn-primary" id="addPurchaseBtn">${icon('plus')} Record Purchase</button>
       </div>
     </div>
 
     <div class="card mt">
+      <div class="card-head"><h3>Purchase records</h3><span class="right" id="purchaseTotal">—</span></div>
       <div class="card-pad">
+        <div class="filter-row">
+          <div class="field grow">
+            <label>Search</label>
+            <input class="input" id="purchaseSearch" placeholder="Product or supplier" />
+          </div>
+          <div class="field">
+            <label>Supplier</label>
+            <select class="input" id="purchaseSupplier"></select>
+          </div>
+        </div>
         <div class="table-wrap">
-          <table style="width:100%">
+          <table style="width:100%;margin-top:10px">
             <thead>
               <tr>
                 <th style="text-align:left">Product</th>
@@ -38,11 +67,52 @@ export function render(root) {
       </div>
     </div>`;
 
+  const searchEl = root.querySelector('#purchaseSearch');
+  const rangeEl = root.querySelector('#purchaseRange');
+  const supplierEl = root.querySelector('#purchaseSupplier');
+
+  function paintSuppliers() {
+    const current = supplierEl.value || 'all';
+    const list = [
+      ...new Set([
+        ...db.suppliers.map((s) => s.name || ''),
+        ...db.purchases.map((p) => p.supplierName || ''),
+      ]),
+    ].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    supplierEl.innerHTML = `<option value="all">All suppliers</option>${list
+      .map((s) => `<option value="${esc(s)}">${esc(s)}</option>`)
+      .join('')}`;
+    supplierEl.value = list.includes(current) ? current : 'all';
+  }
+
+  function filtered() {
+    const q = String(searchEl.value || '').toLowerCase().trim();
+    const from = rangeStart(rangeEl.value);
+    const supplier = supplierEl.value;
+    return db.purchases
+      .filter((p) => {
+        const matchesQuery =
+          !q ||
+          String(p.productName || '').toLowerCase().includes(q) ||
+          String(p.supplierName || '').toLowerCase().includes(q);
+        const matchesRange = !from || new Date(p.createdAt || 0) >= from;
+        const matchesSupplier = supplier === 'all' || (p.supplierName || '') === supplier;
+        return matchesQuery && matchesRange && matchesSupplier;
+      })
+      .slice()
+      .reverse();
+  }
+
   function renderTable() {
-    const list = db.purchases.slice().reverse();
+    const list = filtered();
+    const totalEl = root.querySelector('#purchaseTotal');
+    if (totalEl) {
+      const total = list.reduce((a, p) => a + (Number(p.totalCost) || 0), 0);
+      totalEl.textContent = `${list.length} entries · ${money(total)}`;
+    }
     if (!list.length) {
       root.querySelector('#purchaseTableBody').innerHTML = `
-        <tr><td colspan="6"><div class="empty-state">Abhi koi purchase record nahi hui.</div></td></tr>`;
+        <tr><td colspan="6"><div class="empty-state">Is filter mein koi purchase record nahi.</div></td></tr>`;
       return;
     }
     root.querySelector('#purchaseTableBody').innerHTML = list
@@ -62,7 +132,11 @@ export function render(root) {
       .join('');
   }
 
+  paintSuppliers();
   renderTable();
+  searchEl.addEventListener('input', renderTable);
+  rangeEl.addEventListener('change', renderTable);
+  supplierEl.addEventListener('change', renderTable);
 
   function openForm() {
     const productOptions = db.products
@@ -175,6 +249,7 @@ export function render(root) {
           }
 
           save();
+          paintSuppliers();
           renderTable();
           toast('Purchase recorded', 'success');
           bd.remove();
@@ -197,8 +272,25 @@ export function render(root) {
     confirmDialog(`"${item.productName}" ki purchase delete karein? (stock reverse nahi hoga)`, () => {
       db.purchases = db.purchases.filter((x) => x.id !== item.id);
       save();
+      paintSuppliers();
       renderTable();
       toast('Purchase deleted', 'success');
     });
+  });
+
+  root.querySelector('#exportPurchases').addEventListener('click', () => {
+    const rows = [['Date', 'Product', 'Supplier', 'Qty', 'Cost', 'Total Cost']];
+    for (const p of filtered()) {
+      rows.push([
+        new Date(p.createdAt).toISOString().slice(0, 10),
+        p.productName || '',
+        p.supplierName || '',
+        Number(p.qty) || 0,
+        Number(p.cost) || 0,
+        Number(p.totalCost) || 0,
+      ]);
+    }
+    downloadFile(`mhzaly-purchases-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
+    toast('Purchases exported', 'success');
   });
 }

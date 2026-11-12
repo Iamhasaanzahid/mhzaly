@@ -28,6 +28,7 @@ export function render(root) {
   const cart = [];
   let customerName = '';
   let customerPhone = '';
+  let customerTax = '';
   let discountType = 'amount';
   let discountValue = 0;
 
@@ -71,6 +72,10 @@ export function render(root) {
           <div class="field">
             <label>Phone (WhatsApp receipt ke liye)</label>
             <input class="input" id="posPhone" placeholder="03xx-xxxxxxx" inputmode="tel" />
+          </div>
+          <div class="field">
+            <label>Customer tax / NTN (optional)</label>
+            <input class="input" id="posTax" placeholder="Buyer tax number" autocomplete="off" />
           </div>
           <div class="field">
             <label>Payment method</label>
@@ -234,13 +239,33 @@ export function render(root) {
   root.querySelector('#posCustomer').addEventListener('input', (e) => {
     customerName = e.target.value;
     const match = db.customers.find((c) => c.name.toLowerCase() === String(customerName || '').toLowerCase().trim());
-    if (match && match.phone) {
-      root.querySelector('#posPhone').value = match.phone;
-      customerPhone = match.phone;
+    if (match) {
+      if (match.phone) {
+        root.querySelector('#posPhone').value = match.phone;
+        customerPhone = match.phone;
+      }
+      if (match.taxNumber) {
+        root.querySelector('#posTax').value = match.taxNumber;
+        customerTax = match.taxNumber;
+      }
     }
   });
   root.querySelector('#posPhone').addEventListener('input', (e) => {
     customerPhone = e.target.value;
+    const match = db.customers.find((c) => c.phone && String(c.phone).replace(/[^\d]/g, '') === String(customerPhone).replace(/[^\d]/g, ''));
+    if (match) {
+      if (!customerName.trim()) {
+        customerName = match.name;
+        root.querySelector('#posCustomer').value = match.name;
+      }
+      if (match.taxNumber) {
+        root.querySelector('#posTax').value = match.taxNumber;
+        customerTax = match.taxNumber;
+      }
+    }
+  });
+  root.querySelector('#posTax').addEventListener('input', (e) => {
+    customerTax = e.target.value;
   });
 
   discountEl.addEventListener('input', (e) => {
@@ -256,10 +281,12 @@ export function render(root) {
     cart.length = 0;
     customerName = '';
     customerPhone = '';
+    customerTax = '';
     discountValue = 0;
     discountType = 'amount';
     root.querySelector('#posCustomer').value = '';
     root.querySelector('#posPhone').value = '';
+    root.querySelector('#posTax').value = '';
     root.querySelector('#posDiscount').value = '0';
     root.querySelector('#posDiscountType').value = 'amount';
     root.querySelector('#posPayment').value = 'Cash';
@@ -277,6 +304,7 @@ export function render(root) {
       cart: cart.map((i) => ({ ...i })),
       customerName,
       customerPhone,
+      customerTax,
       discountType,
       discountValue,
     });
@@ -317,10 +345,12 @@ export function render(root) {
           }
           customerName = bill.customerName || '';
           customerPhone = bill.customerPhone || '';
+          customerTax = bill.customerTax || '';
           discountType = bill.discountType || 'amount';
           discountValue = bill.discountValue || 0;
           root.querySelector('#posCustomer').value = customerName;
           root.querySelector('#posPhone').value = customerPhone;
+          root.querySelector('#posTax').value = customerTax;
           root.querySelector('#posDiscountType').value = discountType;
           root.querySelector('#posDiscount').value = discountValue;
           writeHeld(loadHeld().filter((h) => h.id !== bill.id));
@@ -351,6 +381,7 @@ export function render(root) {
       invoiceNo: 'INV-' + String(Date.now()).slice(-6),
       customerName: name || 'Walk-in',
       customerPhone: (customerPhone || '').trim(),
+      customerTaxNumber: (customerTax || '').trim(),
       items: [...cart],
       subtotal,
       discount,
@@ -372,11 +403,15 @@ export function render(root) {
     if (method === 'Udhaar') {
       let c = db.customers.find((x) => x.name.toLowerCase() === name.toLowerCase());
       if (!c) {
-        c = { id: uid('cust'), name, phone: sale.customerPhone, balance: 0, createdAt: new Date().toISOString() };
+        c = { id: uid('cust'), name, phone: sale.customerPhone, taxNumber: sale.customerTaxNumber, balance: 0, createdAt: new Date().toISOString() };
         db.customers.push(c);
       }
       c.balance = (Number(c.balance) || 0) + total;
       if (sale.customerPhone && !c.phone) c.phone = sale.customerPhone;
+      if (sale.customerTaxNumber) c.taxNumber = sale.customerTaxNumber;
+    } else if (sale.customerTaxNumber) {
+      const c = db.customers.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (c && !c.taxNumber) c.taxNumber = sale.customerTaxNumber;
     }
 
     save();
@@ -409,6 +444,7 @@ function showSaleComplete(sale) {
         <div class="sale-done-sub">${esc(sale.customerName || 'Walk-in')} · ${esc(sale.items.reduce((a, it) => a + (Number(it.qty) || 1), 0))} item(s) · ${esc(sale.paymentMethod || 'Cash')}</div>
       </div>
       ${Number(sale.discount) > 0 ? `<div class="small muted" style="text-align:center;margin:-4px 0 10px">Discount ${money(sale.discount)} applied</div>` : ''}
+      ${sale.customerTaxNumber ? `<div class="small muted" style="text-align:center;margin:-4px 0 10px">Buyer tax: <b>${esc(sale.customerTaxNumber)}</b></div>` : ''}
       ${isCash ? `
       <div class="cash-box">
         <div class="field">

@@ -3,22 +3,31 @@
    ============================================================ */
 
 import { db, uid, save } from '../db.js';
-import { icon, esc, toast, openModal, confirmDialog } from '../ui.js';
+import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
+import { supplierLedger, openStatement } from '../statement.js';
+import { toCsv } from '../csv.js';
 
 export function render(root) {
   root.innerHTML = `
     <div class="page-head">
       <div class="grow">
         <h2>Suppliers</h2>
-        <p>Manage supplier list and payable balance.</p>
+        <p>Manage supplier list, payable balance and full statements.</p>
       </div>
       <div class="head-actions">
+        <button class="btn btn-ghost" id="exportSuppliers">${icon('download')} Export CSV</button>
         <button class="btn btn-primary" id="addSupplierBtn">${icon('plus')} Add Supplier</button>
       </div>
     </div>
 
-    <div class="card mt">
+    <div class="stat-strip">
+      <div><div class="lbl">Suppliers</div><div class="val" id="supplierCount">0</div></div>
+      <div><div class="lbl">Total payable</div><div class="val" id="supplierPayable">—</div></div>
+      <div><div class="lbl">With balance</div><div class="val" id="supplierWithBal">0</div></div>
+    </div>
+
+    <div class="card">
       <div class="card-pad">
         <div class="field mt-sm">
           <label>Search</label>
@@ -31,7 +40,7 @@ export function render(root) {
                 <th style="text-align:left">Name</th>
                 <th style="text-align:left">Phone</th>
                 <th style="text-align:right">Payable</th>
-                <th style="width:120px"></th>
+                <th style="width:150px"></th>
               </tr>
             </thead>
             <tbody id="supplierTableBody"></tbody>
@@ -40,10 +49,23 @@ export function render(root) {
       </div>
     </div>`;
 
+  function totalPayable() {
+    return db.suppliers.reduce((sum, s) => sum + Math.max(0, Number(s.balance) || 0), 0);
+  }
+
+  function paintSummary() {
+    const countEl = root.querySelector('#supplierCount');
+    const payableEl = root.querySelector('#supplierPayable');
+    const withBalEl = root.querySelector('#supplierWithBal');
+    if (countEl) countEl.textContent = db.suppliers.length;
+    if (payableEl) payableEl.textContent = money(totalPayable());
+    if (withBalEl) withBalEl.textContent = db.suppliers.filter((s) => (Number(s.balance) || 0) > 0).length;
+  }
+
   function renderTable() {
     const q = String(root.querySelector('#supplierSearch').value || '').toLowerCase();
     const list = db.suppliers.filter(
-      (s) => s.name.toLowerCase().includes(q) || (s.phone || '').toLowerCase().includes(q)
+      (s) => String(s.name || '').toLowerCase().includes(q) || String(s.phone || '').toLowerCase().includes(q)
     );
 
     if (!list.length) {
@@ -57,12 +79,13 @@ export function render(root) {
         const bal = Number(s.balance || 0);
         return `
       <tr>
-        <td><b>${esc(s.name)}</b></td>
+        <td><b>${esc(s.name)}</b>${s.note ? `<div class="pos-meta">${esc(s.note)}</div>` : ''}</td>
         <td>${esc(s.phone || '')}</td>
         <td style="text-align:right">
           ${bal > 0 ? `<span class="badge danger">${money(bal)}</span>` : `<span class="badge ok">${money(0)}</span>`}
         </td>
-        <td style="text-align:right">
+        <td style="text-align:right; white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" data-statement="${esc(s.id)}" title="Statement / ledger">${icon('chart')}</button>
           ${bal > 0 ? `<button class="btn btn-primary btn-sm" data-pay="${esc(s.id)}" title="Pay supplier">${icon('wallet')}</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit="${esc(s.id)}" title="Edit">${icon('settings')}</button>
           <button class="btn btn-ghost btn-sm" data-del="${esc(s.id)}" title="Delete">${icon('trash')}</button>
@@ -72,6 +95,7 @@ export function render(root) {
       .join('');
   }
 
+  paintSummary();
   renderTable();
   root.querySelector('#supplierSearch').addEventListener('input', renderTable);
 
@@ -119,6 +143,7 @@ export function render(root) {
             toast('Supplier added', 'success');
           }
           save();
+          paintSummary();
           renderTable();
           bd.remove();
         };
@@ -177,6 +202,7 @@ export function render(root) {
           });
           save();
           bd.remove();
+          paintSummary();
           renderTable();
           toast(`${money(applied)} paid`, 'success');
         });
@@ -187,6 +213,12 @@ export function render(root) {
   root.querySelector('#addSupplierBtn').addEventListener('click', () => openForm(null));
 
   root.querySelector('#supplierTableBody').addEventListener('click', (e) => {
+    const statement = e.target.closest('[data-statement]');
+    if (statement) {
+      const s = db.suppliers.find((x) => x.id === statement.dataset.statement);
+      if (s) openStatement(supplierLedger(s));
+      return;
+    }
     const pay = e.target.closest('[data-pay]');
     if (pay) {
       const s = db.suppliers.find((x) => x.id === pay.dataset.pay);
@@ -206,9 +238,25 @@ export function render(root) {
       confirmDialog(`"${s.name}" delete karein?`, () => {
         db.suppliers = db.suppliers.filter((x) => x.id !== s.id);
         save();
+        paintSummary();
         renderTable();
         toast('Supplier deleted', 'success');
       });
     }
+  });
+
+  root.querySelector('#exportSuppliers').addEventListener('click', () => {
+    const rows = [['Name', 'Phone', 'Payable', 'Note', 'Created']];
+    for (const s of db.suppliers) {
+      rows.push([
+        s.name || '',
+        s.phone || '',
+        Number(s.balance) || 0,
+        s.note || '',
+        s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : '',
+      ]);
+    }
+    downloadFile(`mhzaly-suppliers-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
+    toast('Suppliers exported', 'success');
   });
 }

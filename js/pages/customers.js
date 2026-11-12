@@ -2,23 +2,32 @@
    mhzaly — Customers (Udhaar Khata)
    ============================================================ */
 
-import { db, uid, save } from '../db.js';
-import { icon, esc, toast, openModal, confirmDialog } from '../ui.js';
+import { db, uid, save, totalReceivable } from '../db.js';
+import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
+import { customerLedger, openStatement } from '../statement.js';
+import { toCsv } from '../csv.js';
 
 export function render(root) {
   root.innerHTML = `
     <div class="page-head">
       <div class="grow">
         <h2>Customers</h2>
-        <p>Manage customer khata (credit/udhaar).</p>
+        <p>Manage customer khata (credit/udhaar), payments and full statements.</p>
       </div>
       <div class="head-actions">
+        <button class="btn btn-ghost" id="exportCustomers">${icon('download')} Export CSV</button>
         <button class="btn btn-primary" id="addCustomerBtn">${icon('plus')} Add Customer</button>
       </div>
     </div>
 
-    <div class="card mt">
+    <div class="stat-strip">
+      <div><div class="lbl">Customers</div><div class="val" id="customerCount">0</div></div>
+      <div><div class="lbl">Total udhaar</div><div class="val" id="customerUdhaar">—</div></div>
+      <div><div class="lbl">With balance</div><div class="val" id="customerWithBal">0</div></div>
+    </div>
+
+    <div class="card">
       <div class="card-pad">
         <div class="field mt-sm">
           <label>Search</label>
@@ -31,7 +40,7 @@ export function render(root) {
                 <th style="text-align:left">Name</th>
                 <th style="text-align:left">Phone</th>
                 <th style="text-align:right">Balance</th>
-                <th style="width:120px"></th>
+                <th style="width:150px"></th>
               </tr>
             </thead>
             <tbody id="customerTableBody"></tbody>
@@ -40,10 +49,19 @@ export function render(root) {
       </div>
     </div>`;
 
+  function paintSummary() {
+    const countEl = root.querySelector('#customerCount');
+    const udhaarEl = root.querySelector('#customerUdhaar');
+    const withBalEl = root.querySelector('#customerWithBal');
+    if (countEl) countEl.textContent = db.customers.length;
+    if (udhaarEl) udhaarEl.textContent = money(totalReceivable());
+    if (withBalEl) withBalEl.textContent = db.customers.filter((c) => (Number(c.balance) || 0) > 0).length;
+  }
+
   function renderTable() {
     const q = String(root.querySelector('#customerSearch').value || '').toLowerCase();
     const list = db.customers.filter(
-      (c) => c.name.toLowerCase().includes(q) || (c.phone || '').toLowerCase().includes(q)
+      (c) => String(c.name || '').toLowerCase().includes(q) || String(c.phone || '').toLowerCase().includes(q)
     );
 
     if (!list.length) {
@@ -57,12 +75,13 @@ export function render(root) {
         const bal = Number(c.balance || 0);
         return `
       <tr>
-        <td><b>${esc(c.name)}</b></td>
+        <td><b>${esc(c.name)}</b>${c.note ? `<div class="pos-meta">${esc(c.note)}</div>` : ''}</td>
         <td>${esc(c.phone || '')}</td>
         <td style="text-align:right">
           ${bal > 0 ? `<span class="badge warn">${money(bal)}</span>` : `<span class="badge ok">${money(0)}</span>`}
         </td>
-        <td style="text-align:right">
+        <td style="text-align:right; white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" data-statement="${esc(c.id)}" title="Statement / ledger">${icon('chart')}</button>
           ${bal > 0 ? `<button class="btn btn-primary btn-sm" data-receive="${esc(c.id)}" title="Payment receive">${icon('wallet')}</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit="${esc(c.id)}" title="Edit">${icon('settings')}</button>
           <button class="btn btn-ghost btn-sm" data-del="${esc(c.id)}" title="Delete">${icon('trash')}</button>
@@ -72,6 +91,7 @@ export function render(root) {
       .join('');
   }
 
+  paintSummary();
   renderTable();
   root.querySelector('#customerSearch').addEventListener('input', renderTable);
 
@@ -90,6 +110,9 @@ export function render(root) {
           <label>Phone
             <input id="cfPhone" value="${esc(c.phone || '')}" placeholder="03xx-xxxxxxx" inputmode="tel" />
           </label>
+          <label>Tax / NTN (optional)
+            <input id="cfTax" value="${esc(c.taxNumber || '')}" placeholder="e.g. 1234567-8" />
+          </label>
           <label>Opening udhaar (${esc(db.settings.currency || 'Rs')})
             <input id="cfBalance" type="number" min="0" step="0.01" value="${c.balance ?? 0}" />
           </label>
@@ -107,6 +130,7 @@ export function render(root) {
           const data = {
             name,
             phone: bd.querySelector('#cfPhone').value.trim(),
+            taxNumber: bd.querySelector('#cfTax').value.trim(),
             balance: Number(bd.querySelector('#cfBalance').value || 0),
             note: bd.querySelector('#cfNote').value.trim(),
             updatedAt: new Date().toISOString(),
@@ -119,6 +143,7 @@ export function render(root) {
             toast('Customer added', 'success');
           }
           save();
+          paintSummary();
           renderTable();
           bd.remove();
         };
@@ -177,6 +202,7 @@ export function render(root) {
           });
           save();
           bd.remove();
+          paintSummary();
           renderTable();
           toast(`${money(applied)} receive ho gaya`, 'success');
         });
@@ -187,6 +213,12 @@ export function render(root) {
   root.querySelector('#addCustomerBtn').addEventListener('click', () => openForm(null));
 
   root.querySelector('#customerTableBody').addEventListener('click', (e) => {
+    const statement = e.target.closest('[data-statement]');
+    if (statement) {
+      const c = db.customers.find((x) => x.id === statement.dataset.statement);
+      if (c) openStatement(customerLedger(c));
+      return;
+    }
     const receive = e.target.closest('[data-receive]');
     if (receive) {
       const c = db.customers.find((x) => x.id === receive.dataset.receive);
@@ -206,9 +238,26 @@ export function render(root) {
       confirmDialog(`"${c.name}" delete karein?`, () => {
         db.customers = db.customers.filter((x) => x.id !== c.id);
         save();
+        paintSummary();
         renderTable();
         toast('Customer deleted', 'success');
       });
     }
+  });
+
+  root.querySelector('#exportCustomers').addEventListener('click', () => {
+    const rows = [['Name', 'Phone', 'Tax / NTN', 'Balance', 'Note', 'Created']];
+    for (const c of db.customers) {
+      rows.push([
+        c.name || '',
+        c.phone || '',
+        c.taxNumber || '',
+        Number(c.balance) || 0,
+        c.note || '',
+        c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : '',
+      ]);
+    }
+    downloadFile(`mhzaly-customers-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
+    toast('Customers exported', 'success');
   });
 }

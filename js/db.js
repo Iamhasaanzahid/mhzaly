@@ -6,7 +6,7 @@ import { scheduleSync } from './api.js';
 
 const LEGACY_KEY = 'mart_manager_db_v1';
 const CACHE_PREFIX = 'mhzaly_db_';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 4;
 
 let storageKey = LEGACY_KEY;
 let syncEnabled = false;
@@ -57,6 +57,12 @@ export function defaultSettings() {
     taxRate: 0,
     lowStock: 5,
     receiptNote: 'Thank you for shopping with us!',
+    receiptTerms: '',
+    taxNumber: '',
+    taxCountry: 'PK',
+    taxSystem: 'GST',
+    receiptQr: true,
+    logo: '',
   };
 }
 
