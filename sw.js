@@ -1,5 +1,5 @@
 /* Service worker — offline support (network-first, cache fallback) */
-const CACHE = 'mhzaly-v5';
+const CACHE = 'mhzaly-v25';
 const ASSETS = [
   './',
   './index.html',
@@ -11,12 +11,15 @@ const ASSETS = [
   './js/app.js',
   './js/api.js',
   './js/db.js',
+  './js/theme.js',
   './js/ui.js',
   './js/owner.js',
   './js/sample.js',
   './js/receipt.js',
+  './js/receipt-share.js',
   './js/pages/auth.js',
   './js/pages/dashboard.js',
+  './js/pages/assistant.js',
   './js/pages/pos.js',
   './js/pages/products.js',
   './js/pages/sales.js',
@@ -25,6 +28,7 @@ const ASSETS = [
   './js/pages/suppliers.js',
   './js/pages/expenses.js',
   './js/pages/reports.js',
+  './js/pages/returns.js',
   './js/pages/settings.js',
 ];
 

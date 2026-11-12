@@ -16,6 +16,14 @@ export const ICONS = {
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
   download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 9v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9"/><polyline points="17 18 12 13 7 18"/><line x1="12" y1="3" x2="12" y2="18"/></svg>`,
+  mic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
+  chart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></svg>`,
+  return: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+  wallet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  barcode: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"/></svg>`,
 };
 
 export function icon(name, sizeClass = '') {
@@ -43,14 +51,31 @@ export function toast(message, type = '') {
     el = document.createElement('div');
     document.body.appendChild(el);
   }
+  clearTimeout(el._hideTimer);
   el.className = `owner-toast ${type}`;
   el.textContent = message;
-  setTimeout(() => { if (el.parentNode) el.remove(); }, 4000);
+  el._hideTimer = setTimeout(() => { if (el.parentNode) el.remove(); }, 4000);
 }
 
 export function confirmDialog(message, onConfirm, onCancel) {
-  if (!confirm(message)) { if (onCancel) onCancel(); return; }
-  if (onConfirm) onConfirm();
+  const destructive = /delete|clear|remove|erase|hata|mita|khatam|barbad/i.test(message);
+  const backdrop = openModal({
+    title: 'Please confirm',
+    body: `<p style="margin:0;font-size:13.5px;line-height:1.6;color:#334155">${esc(message)}</p>`,
+    footer: `<button class="btn btn-ghost" data-no>Cancel</button>
+             <button class="btn ${destructive ? 'btn-danger' : 'btn-primary'}" data-yes>${destructive ? 'Delete' : 'Confirm'}</button>`,
+    onMount: (bd) => {
+      bd.querySelector('[data-no]').addEventListener('click', () => {
+        bd.remove();
+        if (onCancel) onCancel();
+      });
+      bd.querySelector('[data-yes]').addEventListener('click', () => {
+        bd.remove();
+        if (onConfirm) onConfirm();
+      });
+    },
+  });
+  return backdrop;
 }
 
 export function openModal({ title, subtitle, body, footer, onMount }) {
@@ -69,15 +94,34 @@ export function openModal({ title, subtitle, body, footer, onMount }) {
       ${footer ? `<div class="owner-modal-actions">${footer}</div>` : ''}
     </div>`;
   document.body.appendChild(backdrop);
-  const close = () => backdrop.remove();
+  linkLabels(backdrop);
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    if (backdrop.parentNode) backdrop.remove();
+  };
   backdrop.querySelector('[data-close]').addEventListener('click', close);
+  backdrop.querySelectorAll('[data-modal-close]').forEach((btn) => btn.addEventListener('click', close));
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  document.addEventListener('keydown', onKey);
   if (onMount) onMount(backdrop);
   return backdrop;
 }
 
-export function downloadFile(name, content) {
-  const blob = new Blob([content], { type: 'application/json' });
+export function linkLabels(scope = document) {
+  scope.querySelectorAll('label').forEach((label) => {
+    if (label.htmlFor) return;
+    if (label.querySelector('input, select, textarea')) return;
+    let el = label.nextElementSibling;
+    while (el && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el = el.nextElementSibling;
+    if (!el) return;
+    if (!el.id) el.id = 'mz_fld_' + Math.random().toString(36).slice(2, 9);
+    label.htmlFor = el.id;
+  });
+}
+
+export function downloadFile(name, content, mime = 'application/json') {
+  const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

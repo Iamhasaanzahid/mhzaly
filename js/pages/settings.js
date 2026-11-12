@@ -2,21 +2,13 @@
    mhzaly — Settings & data management
    ============================================================ */
 
-import {
-  db, save, exportDb, importDb, clearAll, loadSampleData, defaultSettings,
-  SHOP_TYPES,
-} from '../db.js';
-import {
-  getStoredShop, isDemo, clearSession, deleteAccount, changePassword,
-} from '../api.js';
-import {
-  icon, esc, initials, toast, confirmDialog, downloadFile, emptyState,
-  openModal, closeModal,
-} from '../ui.js';
+import { db, save, exportDb, importDb, clearAll, loadSampleData, SHOP_TYPES } from '../db.js';
+import { icon, esc, toast, confirmDialog, downloadFile, linkLabels } from '../ui.js';
+import { getThemeChoice, setThemeChoice } from '../theme.js';
 
 export const meta = { title: 'Settings', subtitle: 'Shop details, backup and preferences' };
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 
 function syncShell() {
   const shop = db.settings.shopName || 'My Mart';
@@ -107,6 +99,24 @@ export function render(root) {
       </div>
     </div>
 
+    <div class="card mt">
+      <div class="card-head"><h3>Appearance</h3><div class="right"><span class="hint">Light, dark ya device ke mutabiq</span></div></div>
+      <div class="card-pad">
+        <div class="theme-choices" id="themeChoices">
+          <button class="theme-choice ${getThemeChoice() === 'light' ? 'active' : ''}" type="button" data-theme-choice="light">
+            ${icon('sun')}<b>Light</b><span>Din wali bright look</span>
+          </button>
+          <button class="theme-choice ${getThemeChoice() === 'dark' ? 'active' : ''}" type="button" data-theme-choice="dark">
+            ${icon('moon')}<b>Dark</b><span>Raat wali soft look</span>
+          </button>
+          <button class="theme-choice ${getThemeChoice() === 'system' ? 'active' : ''}" type="button" data-theme-choice="system">
+            ${icon('settings')}<b>System</b><span>Device ke theme ke mutabiq</span>
+          </button>
+        </div>
+        <p class="small muted mt-sm" style="margin-bottom:0">Login page hamesha waisa hi rehta hai — ye choice sirf app ke andar lagti hai.</p>
+      </div>
+    </div>
+
     <div class="grid k2 mt">
       <div class="card">
         <div class="card-head"><h3>Backup & restore</h3><div class="right"><span class="badge">${storageSize()}</span></div></div>
@@ -161,6 +171,8 @@ export function render(root) {
           <span class="badge">Multi-shop accounts</span>
           <span class="badge">POS billing</span>
           <span class="badge">Barcode ready</span>
+          <span class="badge">Returns & refunds</span>
+          <span class="badge">Hold bills</span>
           <span class="badge">Udhaar khata</span>
           <span class="badge">Purchases</span>
           <span class="badge">Reports</span>
@@ -171,6 +183,16 @@ export function render(root) {
     </div>`;
 
   syncShell();
+  const rerender = () => { render(root); linkLabels(root); };
+
+  root.querySelectorAll('[data-theme-choice]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const choice = btn.dataset.themeChoice;
+      setThemeChoice(choice);
+      root.querySelectorAll('[data-theme-choice]').forEach((b) => b.classList.toggle('active', b === btn));
+      toast(choice === 'system' ? 'Theme: device ke mutabiq' : `Theme: ${choice === 'dark' ? 'Dark' : 'Light'} mode`, 'success');
+    });
+  });
 
   root.querySelector('#shopForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -184,7 +206,7 @@ export function render(root) {
     save();
     syncShell();
     toast('Shop details saved');
-    refresh();
+    rerender();
   });
 
   root.querySelector('#prefForm').addEventListener('submit', (e) => {
@@ -197,7 +219,7 @@ export function render(root) {
     db.settings.lowStock = Number.isFinite(low) && low >= 0 ? low : 5;
     save();
     toast('Preferences saved');
-    refresh();
+    rerender();
   });
 
   root.querySelector('#exportBackup').addEventListener('click', () => {
@@ -218,7 +240,7 @@ export function render(root) {
       try {
         importDb(ev.target.result);
         toast('Backup restored');
-        refresh();
+        rerender();
       } catch (err) {
         toast(err.message, 'error');
       }
@@ -227,25 +249,31 @@ export function render(root) {
   });
 
   root.querySelector('#loadDemo').addEventListener('click', () => {
-    if (!confirm('Demo data load karne se aap ka current data replace ho jayega. Pehle backup le lein.')) return;
-    import('../api.js').then(({ setDemo }) => setDemo(false));
-    loadSampleData();
-    toast('Demo data loaded');
-    refresh();
+    confirmDialog('Sample products load kiye jayenge (mojooda data safe rahega). Pehle backup le lein.', () => {
+      loadSampleData();
+      toast('Sample products loaded');
+      rerender();
+    });
   });
 
   root.querySelector('#clearData').addEventListener('click', () => {
-    if (!confirm('Poori data delete ho jayegi — ye step undo nahi kiya ja sakta. Backup zaroor le lein.')) return;
-    clearAll();
-    toast('All data cleared');
-    refresh();
+    confirmDialog('Poori data delete ho jayegi — ye step undo nahi kiya ja sakta. Backup zaroor le lein.', () => {
+      clearAll();
+      toast('All data cleared');
+      rerender();
+    });
   });
 }
 
 function storageSize() {
   try {
-    const raw = localStorage.getItem(db.settings.shopName ? `mhzaly_db_${getStoredShop?.()?.id || 'legacy'}` : 'mart_manager_db_v1') || '';
-    const bytes = new Blob([raw]).size;
+    let bytes = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('mhzaly_db')) {
+        bytes += new Blob([localStorage.getItem(key) || '']).size;
+      }
+    }
     return (bytes / 1024).toFixed(1) + ' KB';
   } catch { return '0 KB'; }
 }

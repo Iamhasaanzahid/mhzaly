@@ -2,8 +2,8 @@
    mhzaly — login / create shop (enhanced)
    ============================================================ */
 
-import { login, register } from '../api.js';
-import { configureShop, hydrate, SHOP_TYPES, shopTypeLabel } from '../db.js';
+import { login, register, clearSession, setDemo } from '../api.js';
+import { configureShop, hydrate, SHOP_TYPES, shopTypeLabel, loadSampleData } from '../db.js';
 import { icon, esc } from '../ui.js';
 
 function goToApp() {
@@ -155,7 +155,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
   function showPending(res) {
     const shop = res.shop || {};
     const emailLine = res.emailSent
-      ? `Approval ke liye <b>mhzcyb@gmail.com</b> par email bheja gaya hai.`
+      ? `Approval ke liye owner ko email bhej di gayi hai.`
       : `Approval request owner ke paas pahunch gayi hai. Owner approve karte hi aap login kar sakte hain.`;
     registerForm.hidden = true;
     const panel = root.querySelector('#registerPending');
@@ -243,11 +243,15 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     }
   });
 
-  root.querySelector('#demoBtn').addEventListener('click', () => {
-    clearSession();
-    import('../api.js').then(({ setDemo }) => setDemo(true));
-    configureShop({ demo: true });
-    import('../db.js').then(({ loadSampleData }) => loadSampleData());
+  root.querySelector('#demoBtn').addEventListener('click', async () => {
+    try {
+      clearSession();
+      setDemo(true);
+      configureShop({ demo: true });
+      await loadSampleData({ demo: true });
+    } catch (err) {
+      console.error('demo setup failed', err);
+    }
     history.replaceState(null, '', location.pathname + '#/dashboard');
     location.reload();
   });
