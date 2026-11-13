@@ -388,4 +388,14 @@ export default {
   'Is hafte': 'На этой неделе',
   'Aaj': 'Сегодня',
   'Kal': 'Завтра',
+  /* ---------- auth pitch (v3) ---------- */
+  'Free AI assistant': 'Бесплатный ИИ-помощник',
+  '"Aaj kya karun?" poochhein — jawab aap ke data se': 'Спросите «Что мне делать сегодня?» — ответы из ваших данных',
+  'Tax & QR receipts': 'Налоговые и QR-квитанции',
+  'GST tax invoice, tax number aur QR code': 'Налоговый счёт GST, номер налогоплательщика и QR-код',
+
+  /* ---------- settings language card ---------- */
+  'App ki zaban / App language': 'Язык приложения',
+  'Jo bhi client apni zaban mein account banata hai, usko apni hi zaban milti hai — account ke saath sync hoti hai.': 'Каждый клиент получает язык, на котором он зарегистрировался — синхронизируется с аккаунтом.',
+
 };

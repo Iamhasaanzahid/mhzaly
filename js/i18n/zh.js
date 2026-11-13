@@ -388,4 +388,14 @@ export default {
   'Is hafte': '本周',
   'Aaj': '今天',
   'Kal': '明天',
+  /* ---------- auth pitch (v3) ---------- */
+  'Free AI assistant': '免费 AI 助手',
+  '"Aaj kya karun?" poochhein — jawab aap ke data se': '问“今天该做什么？”——答案来自你的数据',
+  'Tax & QR receipts': '税务与 QR 收据',
+  'GST tax invoice, tax number aur QR code': 'GST 税务发票、税号和 QR 码',
+
+  /* ---------- settings language card ---------- */
+  'App ki zaban / App language': '应用语言',
+  'Jo bhi client apni zaban mein account banata hai, usko apni hi zaban milti hai — account ke saath sync hoti hai.': '每位客户使用注册时的语言——与账户同步。',
+
 };

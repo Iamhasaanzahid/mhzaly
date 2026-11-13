@@ -388,4 +388,14 @@ export default {
   'Is hafte': 'এই সপ্তাহ',
   'Aaj': 'আজ',
   'Kal': 'কাল',
+  /* ---------- auth pitch (v3) ---------- */
+  'Free AI assistant': 'বিনামূল্যে AI সহকারী',
+  '"Aaj kya karun?" poochhein — jawab aap ke data se': '"আজ কী করব?" জিজ্ঞাসা করুন — উত্তর আপনার ডেটা থেকে',
+  'Tax & QR receipts': 'ট্যাক্স ও QR রসিদ',
+  'GST tax invoice, tax number aur QR code': 'GST ট্যাক্স ইনভয়েস, ট্যাক্স নম্বর ও QR কোড',
+
+  /* ---------- settings language card ---------- */
+  'App ki zaban / App language': 'অ্যাপের ভাষা',
+  'Jo bhi client apni zaban mein account banata hai, usko apni hi zaban milti hai — account ke saath sync hoti hai.': 'প্রতিটি গ্রাহক যে ভাষায় অ্যাকাউন্ট খুলেছেন সেই ভাষা পান — অ্যাকাউন্টের সাথে সিঙ্ক।',
+
 };

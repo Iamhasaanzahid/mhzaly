@@ -388,4 +388,14 @@ export default {
   'Is hafte': 'Bu hafta',
   'Aaj': 'Bugün',
   'Kal': 'Yarın',
+  /* ---------- auth pitch (v3) ---------- */
+  'Free AI assistant': 'Ücretsiz yapay zeka asistanı',
+  '"Aaj kya karun?" poochhein — jawab aap ke data se': '"Bugün ne yapmalıyım?" diye sorun — yanıtlar kendi verilerinizden',
+  'Tax & QR receipts': 'Vergi ve QR fişleri',
+  'GST tax invoice, tax number aur QR code': 'GST vergi faturası, vergi numarası ve QR kod',
+
+  /* ---------- settings language card ---------- */
+  'App ki zaban / App language': 'Uygulama dili',
+  'Jo bhi client apni zaban mein account banata hai, usko apni hi zaban milti hai — account ke saath sync hoti hai.': 'Her müşteri kaydolduğu dili alır — hesapla senkronize edilir.',
+
 };

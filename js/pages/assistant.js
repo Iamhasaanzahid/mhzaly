@@ -9,6 +9,7 @@ import { icon, esc, toast } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { businessHealth, restockPlan, customerRisk, dayCloseSummary, forecastNext7, taxSummary, profitLeaks, customerSegments } from '../insights.js';
 import { aiConfig, askLocal } from '../ai/local.js';
+import { getLang } from '../i18n.js';
 import { buildShopContext, systemPrompt } from '../ai/context.js';
 import { whatIf, anomalyAnswer, planAnswer } from '../ai/advanced.js';
 
@@ -578,7 +579,7 @@ export async function askAi(raw) {
 
   try {
     const context = buildShopContext();
-    const reply = await askLocal(systemPrompt(context), q);
+    const reply = await askLocal(systemPrompt(context, getLang()), q);
     if (reply.text) {
       return {
         text: formatModelText(reply.text),

@@ -24,7 +24,8 @@
 /secret*          /404.html   404
 /secrets*         /404.html   404
 /credentials*     /404.html   404
-/api/*            /404.html   404
+/api/v1/*            /404.html   404
+/api/owner/*        /404.html   404
 /swagger*         /404.html   404
 /graphql          /404.html   404
 /phpinfo.php      /404.html   404

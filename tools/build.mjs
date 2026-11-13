@@ -49,9 +49,10 @@ const FILES = [
   'sitemap.xml',
   '_headers',
   '_redirects',
+  'functions',
 ];
 
-const DIRS = ['css', 'js'];
+const DIRS = ['css', 'js', 'functions'];
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });

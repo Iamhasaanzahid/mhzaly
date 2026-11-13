@@ -234,6 +234,8 @@ function renderAuthView() {
 
 export function init() {
   applyTheme();
+  // detect IP‑based country / language on first visit (non‑blocking)
+  requestIdleCallback(() => maybeApplyGeo());
   initLang();
   watchSystemTheme((resolved) => {
     const btn = document.getElementById('themeBtn');

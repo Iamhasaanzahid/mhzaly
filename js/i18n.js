@@ -8,6 +8,7 @@
 import { db } from './db.js';
 
 import ur from './i18n/ur.js';
+import urRoman from './i18n/ur-roman.js';
 import en from './i18n/en.js';
 import hi from './i18n/hi.js';
 import de from './i18n/de.js';
@@ -21,7 +22,8 @@ import ar from './i18n/ar.js';
 import bn from './i18n/bn.js';
 
 export const LANGS = [
-  { code: 'ur', name: 'Urdu (Roman)', native: 'اردو (Roman Urdu)', dir: 'ltr', flag: '🇵🇰' },
+  { code: 'ur', name: 'Urdu', native: 'اردو', dir: 'rtl', flag: '🇵🇰' },
+  { code: 'ur-roman', name: 'Roman Urdu', native: 'Roman Urdu', dir: 'ltr', flag: '🇵🇰' },
   { code: 'en', name: 'English', native: 'English', dir: 'ltr', flag: '🇬🇧' },
   { code: 'hi', name: 'Hindi', native: 'हिन्दी', dir: 'ltr', flag: '🇮🇳' },
   { code: 'bn', name: 'Bengali', native: 'বাংলা', dir: 'ltr', flag: '🇧🇩' },
@@ -35,8 +37,11 @@ export const LANGS = [
   { code: 'ar', name: 'Arabic', native: 'العربية', dir: 'rtl', flag: '🇸🇦' },
 ];
 
-const DICTS = { ur, en, hi, bn, de, fr, es, pt, tr, ru, zh, ar };
+const DICTS = { ur, 'ur-roman': urRoman, en, hi, bn, de, fr, es, pt, tr, ru, zh, ar };
 const LANG_KEY = 'mhzaly_lang';
+
+/** Source language — its strings are shown as-is (no translation needed). */
+export const SOURCE_LANG = 'ur-roman';
 
 let current = 'ur';
 
@@ -48,7 +53,7 @@ export function isRtl(code = current) {
   return langMeta(code).dir === 'rtl';
 }
 
-/** Best supported language for this device (falls back to Roman Urdu). */
+/** Best supported language for this device (falls back to Urdu). */
 export function detectLang() {
   const candidates = [];
   try {
@@ -62,8 +67,9 @@ export function detectLang() {
   } catch { /* navigator unavailable */ }
   for (const code of candidates) {
     // English is intentionally not auto-detected: the app's base language is
-    // Roman Urdu, so an English browser must not silently switch the shop.
+    // Urdu, so an English browser must not silently switch the shop.
     if (code === 'en') continue;
+    if (code === 'ur') return 'ur';
     if (DICTS[code]) return code;
   }
   return 'ur';
@@ -100,7 +106,7 @@ export function pendingLang() {
  *  strings stay in the source language instead of silently switching to English. */
 export function t(source) {
   const key = String(source ?? '');
-  if (current === 'ur') return key;
+  if (current === SOURCE_LANG) return key;
   const table = DICTS[current] || {};
   if (table[key]) return table[key];
   return key;
@@ -108,21 +114,21 @@ export function t(source) {
 
 /** True when the current language has a translation for this string. */
 export function hasTranslation(source) {
-  if (current === 'ur') return true;
+  if (current === SOURCE_LANG) return true;
   const table = DICTS[current] || {};
   return Boolean(table[String(source ?? '')]);
 }
 
 export function applyDocumentLang() {
   const meta = langMeta(current);
-  document.documentElement.lang = current;
+  document.documentElement.lang = current === 'ur-roman' ? 'ur-Latn' : current;
   document.documentElement.dir = meta.dir;
   document.documentElement.setAttribute('data-lang', current);
 }
 
 /** Coverage of the current language against the English catalog. */
 export function coverage(code = current) {
-  if (code === 'ur') return 100;
+  if (code === SOURCE_LANG) return 100;
   const base = Object.keys(DICTS.en || {}).length || 1;
   const done = Object.keys(DICTS[code] || {}).length;
   return Math.min(100, Math.round((done / base) * 100));
@@ -137,14 +143,14 @@ const ATTRS = ['placeholder', 'title', 'aria-label'];
  * "0 invoices" → "0 Rechnungen" and so on.
  */
 const FRAGMENTS = {
-  ' invoices': { en: ' invoices', hi: ' इनवॉइस', bn: ' ইনভয়েস', de: ' Rechnungen', fr: ' factures', es: ' facturas', pt: ' faturas', tr: ' fatura', ru: ' счетов', zh: ' 张发票', ar: ' فاتورة' },
-  ' invoice(s)': { en: ' invoice(s)', hi: ' इनवॉइस', bn: ' ইনভয়েস', de: ' Rechnungen', fr: ' factures', es: ' facturas', pt: ' faturas', tr: ' fatura', ru: ' счетов', zh: ' 张发票', ar: ' فاتورة' },
-  ' low stock': { en: ' low stock', hi: ' लो स्टॉक', bn: ' লো স্টক', de: ' wenig Bestand', fr: ' stock bas', es: ' pocas existencias', pt: ' stock baixo', tr: ' az stok', ru: ' мало на складе', zh: ' 低库存', ar: ' مخزون منخفض' },
-  ' products': { en: ' products', hi: ' उत्पाद', bn: ' পণ্য', de: ' Produkte', fr: ' produits', es: ' productos', pt: ' produtos', tr: ' ürün', ru: ' товаров', zh: ' 件商品', ar: ' منتج' },
-  ' customers': { en: ' customers', hi: ' ग्राहक', bn: ' ক্রেতা', de: ' Kunden', fr: ' clients', es: ' clientes', pt: ' clientes', tr: ' müşteri', ru: ' клиентов', zh: ' 位客户', ar: ' عميل' },
-  ' items': { en: ' items', hi: ' वस्तुएँ', bn: ' আইটেম', de: ' Artikel', fr: ' articles', es: ' artículos', pt: ' itens', tr: ' ürün', ru: ' позиций', zh: ' 件商品', ar: ' صنف' },
-  ' days left': { en: ' days left', hi: ' दिन बाकी', bn: ' দিন বাকি', de: ' Tage verbleibend', fr: ' jours restants', es: ' días restantes', pt: ' dias restantes', tr: ' gün kaldı', ru: ' дней осталось', zh: ' 天剩余', ar: ' يوم متبقٍ' },
-  ' products low stock': { en: ' products low stock', hi: ' उत्पाद लो स्टॉक', bn: ' পণ্য লো স্টক', de: ' Produkte wenig Bestand', fr: ' produits stock bas', es: ' productos pocas existencias', pt: ' produtos stock baixo', tr: ' ürün az stok', ru: ' товаров мало на складе', zh: ' 件商品库存偏低', ar: ' منتج مخزون منخفض' },
+  ' invoices': { ur: ' بل', 'ur-roman': ' invoices', en: ' invoices', hi: ' इनवॉइस', bn: ' ইনভয়েস', de: ' Rechnungen', fr: ' factures', es: ' facturas', pt: ' faturas', tr: ' fatura', ru: ' счетов', zh: ' 张发票', ar: ' فاتورة' },
+  ' invoice(s)': { ur: ' بل', 'ur-roman': ' invoice(s)', en: ' invoice(s)', hi: ' इनवॉइस', bn: ' ইনভয়েস', de: ' Rechnungen', fr: ' factures', es: ' facturas', pt: ' faturas', tr: ' fatura', ru: ' счетов', zh: ' 张发票', ar: ' فاتورة' },
+  ' low stock': { ur: ' کم اسٹاک', 'ur-roman': ' low stock', en: ' low stock', hi: ' लो स्टॉक', bn: ' লো স্টক', de: ' wenig Bestand', fr: ' stock bas', es: ' pocas existencias', pt: ' stock baixo', tr: ' az stok', ru: ' мало на складе', zh: ' 低库存', ar: ' مخزون منخفض' },
+  ' products': { ur: ' مصنوعات', 'ur-roman': ' products', en: ' products', hi: ' उत्पाद', bn: ' পণ্য', de: ' Produkte', fr: ' produits', es: ' productos', pt: ' produtos', tr: ' ürün', ru: ' товаров', zh: ' 件商品', ar: ' منتج' },
+  ' customers': { ur: ' گاہک', 'ur-roman': ' customers', en: ' customers', hi: ' ग्राहक', bn: ' ক্রেতা', de: ' Kunden', fr: ' clients', es: ' clientes', pt: ' clientes', tr: ' müşteri', ru: ' клиентов', zh: ' 位客户', ar: ' عميل' },
+  ' items': { ur: ' اشیاء', 'ur-roman': ' items', en: ' items', hi: ' वस्तुएँ', bn: ' আইটেম', de: ' Artikel', fr: ' articles', es: ' artículos', pt: ' itens', tr: ' ürün', ru: ' позиций', zh: ' 件商品', ar: ' صنف' },
+  ' days left': { ur: ' دن باقی', 'ur-roman': ' days left', en: ' days left', hi: ' दिन बाकी', bn: ' দিন বাকি', de: ' Tage verbleibend', fr: ' jours restants', es: ' días restantes', pt: ' dias restantes', tr: ' gün kaldı', ru: ' дней осталось', zh: ' 天剩余', ar: ' يوم متبقٍ' },
+  ' products low stock': { ur: ' مصنوعات کم اسٹاک', 'ur-roman': ' products low stock', en: ' products low stock', hi: ' उत्पाद लो स्टॉक', bn: ' পণ্য লো স্টক', de: ' Produkte wenig Bestand', fr: ' produits stock bas', es: ' productos pocas existencias', pt: ' produtos stock baixo', tr: ' ürün az stok', ru: ' товаров мало на складе', zh: ' 件商品库存偏低', ar: ' منتج مخزون منخفض' },
 };
 
 function translateTextNode(node) {

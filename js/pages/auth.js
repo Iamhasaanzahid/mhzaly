@@ -38,10 +38,12 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
           <h1>Your whole shop,<br /><em>in one place.</em></h1>
           <p>Billing, stock, udhaar khata, purchases aur profit — itna simple ke har shopkeeper use kar sakay.</p>
           <ul class="auth-points">
-            <li>${icon('check')}<div><b>Fast POS billing</b><span>Barcode, cash, card and udhaar</span></div></li>
-            <li>${icon('check')}<div><b>Inventory that stays right</b><span>Stock, low-stock alerts and purchases</span></div></li>
+            <li>${icon('barcode')}<div><b>Fast POS billing</b><span>Barcode, cash, card and udhaar</span></div></li>
+            <li>${icon('chart')}<div><b>Inventory that stays right</b><span>Stock, low-stock alerts and purchases</span></div></li>
+            <li>${icon('sparkle')}<div><b>Free AI assistant</b><span>"Aaj kya karun?" poochhein — jawab aap ke data se</span></div></li>
+            <li>${icon('wallet')}<div><b>Tax &amp; QR receipts</b><span>GST tax invoice, tax number aur QR code</span></div></li>
             <li>${icon('check')}<div><b>Har shop ka apna account</b><span>Alag login, alag data — cloud mein safe</span></div></li>
-            <li>${icon('check')}<div><b>Works on any device</b><span>Shop PC, laptop or mobile — same data</span></div></li>
+            <li>${icon('globe')}<div><b>Works on any device</b><span>Shop PC, laptop or mobile — same data</span></div></li>
           </ul>
         </div>
         <div class="auth-side-foot">Cloud synced · Offline ready · No setup cost</div>

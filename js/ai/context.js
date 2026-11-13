@@ -172,11 +172,18 @@ export function buildShopContext() {
 }
 
 /** System prompt for the local model. */
-export function systemPrompt(context) {
+export function systemPrompt(context, lang = 'ur-roman') {
   const currency = context.shop.currency || 'Rs';
+  const langRule = lang === 'ur'
+    ? 'Answer in Urdu script (اردو) — right to left. Keep numbers in Latin digits.'
+    : lang === 'ar'
+      ? 'Answer in Arabic.'
+      : lang === 'en'
+        ? 'Answer in English.'
+        : 'Answer in Roman Urdu (the owner\'s everyday language).';
   return [
     'You are "mhzaly AI", the business intelligence assistant for a small retail shop.',
-    'You speak the owner\'s own language (Roman Urdu / English mix is normal). Answer in that same language.',
+    langRule,
     '',
     'RULES:',
     '- Be short, concrete and actionable. Use tables or bullet lists, never long essays.',

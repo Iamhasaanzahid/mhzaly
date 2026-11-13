@@ -79,6 +79,7 @@ export const CURRENCIES = [
 /** Language → default country (used when the app language changes). */
 export const LANG_COUNTRY = {
   ur: 'PK',
+  'ur-roman': 'PK',
   hi: 'IN',
   bn: 'BD',
   de: 'DE',
