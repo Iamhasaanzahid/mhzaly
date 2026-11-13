@@ -97,3 +97,11 @@ CREATE INDEX IF NOT EXISTS idx_payments_created ON subscription_payments(created
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, endpoint);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, endpoint);
+
+-- v2.7 scalability indexes (hot paths for large traffic)
+CREATE INDEX IF NOT EXISTS idx_shops_status ON shops(status);
+CREATE INDEX IF NOT EXISTS idx_shops_plan ON shops(plan, billing_status);
+CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_log(target_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_shop_data_updated ON shop_data(updated_at);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

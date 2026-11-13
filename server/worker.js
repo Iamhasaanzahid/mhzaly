@@ -314,7 +314,11 @@ async function readJson(request, maxBytes = 20000) {
 }
 
 function b64urlEncode(input) {
-  const bin = String.fromCodePoint(...new Uint8Array(input));
+  // Accepts either a UTF-8 string or raw bytes (token payloads are strings,
+  // password salts are Uint8Array).
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -378,11 +382,57 @@ function escHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+
+/* ---------- Helpers for scalable delivery ---------- */
+
+async function makeEtag(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  const bytes = new Uint8Array(digest);
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 1) out += String.fromCharCode(bytes[i]);
+  const b64 = btoa(out).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `"${b64.slice(0, 32)}"`;
+}
+
 /* ---------- Security: Rate limiting ---------- */
+
+/* In-isolate burst absorber: keeps a hot IP from hammering D1 on
+   every single request. D1 stays the source of truth, but it is only
+   written every RATE_LIMIT_PERSIST_EVERY hits instead of on each one.
+   Keeps the API healthy when thousands of users hit it at once. */
+const RATE_LIMIT_PERSIST_EVERY = 5;
+const MEM_RATE_LIMIT = new Map();
+const MEM_RATE_LIMIT_MAX = 5000;
+
+async function persistRateLimit(env, ip, endpoint, count, windowStart) {
+  await env.DB.prepare(
+    `INSERT INTO rate_limits (ip, endpoint, count, window_start)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(ip, endpoint) DO UPDATE SET count = excluded.count, window_start = excluded.window_start`
+  )
+    .bind(ip, endpoint, count, windowStart)
+    .run()
+    .catch(() => {});
+}
 
 async function checkRateLimit(env, ip, endpoint) {
   const now = Date.now();
-  const windowStart = new Date(now - (now % RATE_LIMIT_WINDOW_MS)).toISOString();
+  const windowMs = now - (now % RATE_LIMIT_WINDOW_MS);
+  const windowStart = new Date(windowMs).toISOString();
+  const key = `${ip}|${endpoint}`;
+
+  const mem = MEM_RATE_LIMIT.get(key);
+  if (mem && mem.windowMs === windowMs) {
+    mem.count += 1;
+    if (mem.count > RATE_LIMIT_MAX_REQUESTS) return { ok: false, remaining: 0 };
+    if (mem.count % RATE_LIMIT_PERSIST_EVERY === 0) {
+      await persistRateLimit(env, ip, endpoint, mem.count, windowStart);
+    }
+    return { ok: true, remaining: RATE_LIMIT_MAX_REQUESTS - mem.count };
+  }
+
+  if (MEM_RATE_LIMIT.size > MEM_RATE_LIMIT_MAX) MEM_RATE_LIMIT.clear();
+  MEM_RATE_LIMIT.set(key, { count: 1, windowMs });
 
   const row = await env.DB.prepare(
     'SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?'
@@ -390,27 +440,11 @@ async function checkRateLimit(env, ip, endpoint) {
     .bind(ip, endpoint)
     .first();
 
-  if (!row || row.window_start !== windowStart) {
-    await env.DB.prepare(
-      `INSERT INTO rate_limits (ip, endpoint, count, window_start)
-       VALUES (?, ?, 1, ?)
-       ON CONFLICT(ip, endpoint) DO UPDATE SET count = 1, window_start = ?`
-    )
-      .bind(ip, endpoint, windowStart, windowStart)
-      .run();
-    return { ok: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
-  }
+  const persisted = row && row.window_start === windowStart ? Number(row.count) : 0;
+  const count = persisted + 1;
+  if (count > RATE_LIMIT_MAX_REQUESTS) return { ok: false, remaining: 0 };
 
-  const count = Number(row.count) + 1;
-  if (count > RATE_LIMIT_MAX_REQUESTS) {
-    return { ok: false, remaining: 0 };
-  }
-
-  await env.DB.prepare(
-    'UPDATE rate_limits SET count = ? WHERE ip = ? AND endpoint = ?'
-  )
-    .bind(count, ip, endpoint)
-    .run();
+  await persistRateLimit(env, ip, endpoint, count, windowStart);
   return { ok: true, remaining: RATE_LIMIT_MAX_REQUESTS - count };
 }
 
@@ -830,7 +864,7 @@ async function handleRegister(request, env) {
     throw new HttpError(400, 'Shop category sahi nahi hai');
   }
 
-  const code = slugify(shopName).slice(0, 24) || 'shop';
+  let code = slugify(shopName).slice(0, 24) || 'shop';
   const phoneRow = await env.DB.prepare(
     'SELECT id, status, confirm_expires FROM shops WHERE phone = ?'
   )
@@ -1538,11 +1572,24 @@ async function handleBootstrap(request, env) {
   const data = dataRow?.data
     ? JSON.parse(dataRow.data)
     : defaultData(shop.name, '', shop.email, shop.phone, shop.shop_type);
-  return json({
+  const payload = {
     shop: shopPayload(shop),
     data,
     updatedAt: dataRow?.updated_at || null,
-  });
+  };
+  // ETag lets the app skip re-downloading an unchanged shop on every open.
+  const etag = await makeEtag(JSON.stringify(payload));
+  if (request.headers.get('If-None-Match') === etag) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: etag,
+        'Cache-Control': 'private, no-cache',
+        ...SECURE_HEADERS,
+      },
+    });
+  }
+  return json(payload, 200, { ETag: etag, 'Cache-Control': 'private, no-cache' });
 }
 
 async function handleSaveData(request, env) {
@@ -1607,7 +1654,11 @@ async function handlePublicShop(request, env) {
     .bind(code)
     .first();
   if (!row) throw new HttpError(404, 'Shop not found');
-  return json({ shop: { name: row.name, code: row.code } });
+  return json(
+    { shop: { name: row.name, code: row.code } },
+    200,
+    { 'Cache-Control': 'public, max-age=60, s-maxage=600' }
+  );
 }
 
 async function handleChangePassword(request, env) {
