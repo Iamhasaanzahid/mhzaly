@@ -6,13 +6,14 @@
 
 import { db } from './db.js';
 import { esc } from './ui.js';
+import { formatMoney } from './currency.js';
 import {
   businessHealth, profitLeaks, restockPlan, customerSegments,
   taxSummary, forecastNext7, dayCloseSummary, topProducts, topCustomers,
 } from './insights.js';
 
 function money(n) {
-  return `${db.settings.currency || 'Rs'} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatMoney(n);
 }
 
 function esc2(v) {

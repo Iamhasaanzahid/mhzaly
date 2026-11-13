@@ -10,6 +10,8 @@ import {
 } from './api.js';
 import { resolvedTheme, applyTheme, toggleTheme, watchSystemTheme } from './theme.js';
 import { LANGS, initLang, applyLang, setLang, getLang, coverage, t } from './i18n.js';
+import { applyLanguageCountry } from './currency.js';
+import { applyTaxCountry } from './tax.js';
 
 import * as authPage from './pages/auth.js';
 import * as dashboard from './pages/dashboard.js';
@@ -131,6 +133,12 @@ export function switchLanguage(code) {
   const next = setLang(code);
   try {
     db.settings.language = next;
+    // Follow the language's country (currency + number/date format) unless
+    // the owner has already picked a country by hand in Settings.
+    const profile = applyLanguageCountry(db.settings, next);
+    if (profile && profile.tax && profile.tax !== 'OTHER') {
+      applyTaxCountry(db.settings, profile.tax);
+    }
     save();
   } catch { /* sync not available */ }
   const hash = location.hash || '#/dashboard';

@@ -132,6 +132,21 @@ export function coverage(code = current) {
 
 const ATTRS = ['placeholder', 'title', 'aria-label'];
 
+/**
+ * Fragments that appear inside dynamic sentences (numbers + unit words).
+ * "0 invoices" → "0 Rechnungen" and so on.
+ */
+const FRAGMENTS = {
+  ' invoices': { en: ' invoices', hi: ' इनवॉइस', bn: ' ইনভয়েস', de: ' Rechnungen', fr: ' factures', es: ' facturas', pt: ' faturas', tr: ' fatura', ru: ' счетов', zh: ' 张发票', ar: ' فاتورة' },
+  ' invoice(s)': { en: ' invoice(s)', hi: ' इनवॉइस', bn: ' ইনভয়েস', de: ' Rechnungen', fr: ' factures', es: ' facturas', pt: ' faturas', tr: ' fatura', ru: ' счетов', zh: ' 张发票', ar: ' فاتورة' },
+  ' low stock': { en: ' low stock', hi: ' लो स्टॉक', bn: ' লো স্টক', de: ' wenig Bestand', fr: ' stock bas', es: ' pocas existencias', pt: ' stock baixo', tr: ' az stok', ru: ' мало на складе', zh: ' 低库存', ar: ' مخزون منخفض' },
+  ' products': { en: ' products', hi: ' उत्पाद', bn: ' পণ্য', de: ' Produkte', fr: ' produits', es: ' productos', pt: ' produtos', tr: ' ürün', ru: ' товаров', zh: ' 件商品', ar: ' منتج' },
+  ' customers': { en: ' customers', hi: ' ग्राहक', bn: ' ক্রেতা', de: ' Kunden', fr: ' clients', es: ' clientes', pt: ' clientes', tr: ' müşteri', ru: ' клиентов', zh: ' 位客户', ar: ' عميل' },
+  ' items': { en: ' items', hi: ' वस्तुएँ', bn: ' আইটেম', de: ' Artikel', fr: ' articles', es: ' artículos', pt: ' itens', tr: ' ürün', ru: ' позиций', zh: ' 件商品', ar: ' صنف' },
+  ' days left': { en: ' days left', hi: ' दिन बाकी', bn: ' দিন বাকি', de: ' Tage verbleibend', fr: ' jours restants', es: ' días restantes', pt: ' dias restantes', tr: ' gün kaldı', ru: ' дней осталось', zh: ' 天剩余', ar: ' يوم متبقٍ' },
+  ' products low stock': { en: ' products low stock', hi: ' उत्पाद लो स्टॉक', bn: ' পণ্য লো স্টক', de: ' Produkte wenig Bestand', fr: ' produits stock bas', es: ' productos pocas existencias', pt: ' produtos stock baixo', tr: ' ürün az stok', ru: ' товаров мало на складе', zh: ' 件商品库存偏低', ar: ' منتج مخزون منخفض' },
+};
+
 function translateTextNode(node) {
   const raw = node.nodeValue || '';
   const trimmed = raw.trim();
@@ -139,7 +154,17 @@ function translateTextNode(node) {
   const table = DICTS[current] || {};
   let hit = table[trimmed];
   if (!hit && trimmed.endsWith(':')) hit = table[trimmed.slice(0, -1)];
-  if (!hit) return;
+  if (!hit) {
+    for (const [frag, map] of Object.entries(FRAGMENTS)) {
+      if (!trimmed.endsWith(frag)) continue;
+      const translated = map[current] || map.en;
+      if (translated && translated !== frag) {
+        node.nodeValue = raw.replace(frag, translated);
+        return;
+      }
+    }
+    return;
+  }
   const translated = trimmed.endsWith(':') && !table[trimmed] ? `${hit}:` : hit;
   node.nodeValue = raw.replace(trimmed, translated);
 }

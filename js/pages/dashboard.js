@@ -5,6 +5,7 @@
 import { db, lowStockProducts, totalReceivable } from '../db.js';
 import { icon, esc, emptyState } from '../ui.js';
 import { businessHealth } from '../insights.js';
+import { formatMoney } from '../currency.js';
 
 function greeting() {
   const h = new Date().getHours();
@@ -14,7 +15,7 @@ function greeting() {
 }
 
 function money(n) {
-  return `${db.settings.currency || 'Rs'} ${Number(n || 0).toLocaleString()}`;
+  return formatMoney(n);
 }
 
 function saleProfit(s) {

@@ -149,8 +149,16 @@ export function taxSystem(country) {
   return TAX_SYSTEMS.find((t) => t.country === country) || TAX_SYSTEMS[0];
 }
 
-export function currentTaxSystem() {
-  const s = db.settings || {};
+/** Switch the shop to a country's tax system (name + recommended rate). */
+export function applyTaxCountry(settings, country) {
+  const t = taxSystem(country);
+  settings.taxCountry = t.country;
+  settings.taxSystem = t.system;
+  settings.taxRate = t.rate;
+  return t;
+}
+
+export function currentTaxSystem() {  const s = db.settings || {};
   const base = taxSystem(s.taxCountry || 'PK');
   return {
     ...base,
@@ -223,6 +231,8 @@ export function saleTaxPayload(sale) {
     tax: totals.tax,
     total: totals.total,
     currency: s.currency || 'Rs',
+    currencyCode: s.currencyCode || '',
+    locale: s.locale || 'en-PK',
     taxSystem: system.system || 'Tax',
     country: system.country || 'PK',
   };

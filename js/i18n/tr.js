@@ -379,4 +379,13 @@ export default {
   'Search result / form save': 'Arama sonucu / formu kaydet',
   'Ye shortcut list': 'Bu kısayol listesi',
   'Refresh karein taake latest mhzaly features mil jayein.': 'En son mhzaly özellikleri için yenileyin.',
+  'Aaj ka munafa': 'Bugünkü kâr',
+  'Customers se lena hai': 'Müşterilerden tahsil edilecek',
+  'Sab theek hai': 'Her şey yolunda',
+  'Restock karein': 'Yeniden sipariş ver',
+  'Aaj ka summary': 'Bugünkü özet',
+  'Is mahine': 'Bu ay',
+  'Is hafte': 'Bu hafta',
+  'Aaj': 'Bugün',
+  'Kal': 'Yarın',
 };

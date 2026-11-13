@@ -5,6 +5,7 @@
    ============================================================ */
 
 import { db, lowStockProducts, totalReceivable } from './db.js';
+import { formatMoney } from './currency.js';
 
 export function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -146,7 +147,7 @@ function clamp(value, min = 0, max = 100) {
 }
 
 function moneyText(value) {
-  return `${db.settings.currency || 'Rs'} ${Number(value || 0).toLocaleString()}`;
+  return formatMoney(value);
 }
 
 /* ---------- Pulse: business health score ---------- */

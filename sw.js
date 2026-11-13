@@ -24,6 +24,7 @@ const ASSETS = [
   './js/insights.js',
   './js/review.js',
   './js/i18n.js',
+  './js/currency.js',
   './js/i18n/ur.js',
   './js/i18n/en.js',
   './js/i18n/hi.js',
@@ -83,12 +84,29 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request, { cache: 'no-cache' })
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        // Only cache real, successful same-origin responses.
+        if (response && response.status === 200 && response.type === 'basic') {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        }
         return response;
       })
-      .catch(() =>
-        caches.match(event.request).then((cached) => cached || caches.match('./index.html'))
-      )
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // The offline shell is served for the app itself only — never for
+        // probes like /git/config or /backup.zip (those must stay a hard 404).
+        const isAppShell =
+          event.request.mode === 'navigate' &&
+          (url.pathname === '/' || url.pathname === '/index.html');
+        if (isAppShell) {
+          const shell = await caches.match('./index.html');
+          if (shell) return shell;
+        }
+        return new Response('Not Found', {
+          status: 404,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      })
   );
 });

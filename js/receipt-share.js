@@ -4,17 +4,14 @@
 
 import { db } from './db.js';
 import { currentTaxSystem, saleVerifyUrl, qrDataUrl } from './tax.js';
+import { formatMoney, formatDateTime } from './currency.js';
 
 function settings() {
   return db.settings || {};
 }
 
-function currency() {
-  return settings().currency || 'Rs';
-}
-
 export function money(n) {
-  return `${currency()} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatMoney(n);
 }
 
 function saleTotals(sale) {
@@ -39,9 +36,13 @@ function shopInitials(name) {
 
 function formatDate(value) {
   const d = value ? new Date(value) : new Date();
-  return d.toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+  try {
+    return formatDateTime(d, (db.settings || {}).locale);
+  } catch {
+    return d.toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  }
 }
 
 export function escapeHtml(value) {
@@ -58,8 +59,7 @@ export function escapeHtml(value) {
 export function receiptText(sale) {
   const s = settings();
   const { items, subtotal, discount, tax, total } = saleTotals(sale);
-  const cur = currency();
-  const fmt = (n) => `${cur} ${Number(n || 0).toLocaleString()}`;
+  const fmt = (n) => formatMoney(n);
   const lines = [];
 
   const taxInfo = currentTaxSystem();
@@ -107,8 +107,7 @@ export function receiptText(sale) {
 export function receiptHtml(sale) {
   const s = settings();
   const { items, subtotal, discount, tax, total } = saleTotals(sale);
-  const cur = currency();
-  const fmt = (n) => `${cur} ${Number(n || 0).toLocaleString()}`;
+  const fmt = (n) => formatMoney(n);
   const shopName = s.shopName || 'My Mart';
   const initials = escapeHtml(shopInitials(shopName));
   const logo = s.logo

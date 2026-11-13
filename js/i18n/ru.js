@@ -379,4 +379,13 @@ export default {
   'Search result / form save': 'Результат поиска / сохранить',
   'Ye shortcut list': 'Этот список горячих клавиш',
   'Refresh karein taake latest mhzaly features mil jayein.': 'Обновите, чтобы получить новые функции mhzaly.',
+  'Aaj ka munafa': 'Прибыль сегодня',
+  'Customers se lena hai': 'Получить с покупателей',
+  'Sab theek hai': 'Всё в порядке',
+  'Restock karein': 'Пополнить',
+  'Aaj ka summary': 'Итоги за сегодня',
+  'Is mahine': 'В этом месяце',
+  'Is hafte': 'На этой неделе',
+  'Aaj': 'Сегодня',
+  'Kal': 'Завтра',
 };

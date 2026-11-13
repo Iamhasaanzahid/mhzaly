@@ -379,4 +379,13 @@ export default {
   'Search result / form save': '搜索结果 / 保存表单',
   'Ye shortcut list': '这是快捷键列表',
   'Refresh karein taake latest mhzaly features mil jayein.': '刷新以获取最新的 mhzaly 功能。',
+  'Aaj ka munafa': '今日利润',
+  'Customers se lena hai': '向客户收款',
+  'Sab theek hai': '一切正常',
+  'Restock karein': '补货',
+  'Aaj ka summary': '今日概览',
+  'Is mahine': '本月',
+  'Is hafte': '本周',
+  'Aaj': '今天',
+  'Kal': '明天',
 };

@@ -6,10 +6,11 @@ import { db, totalReceivable, lowStockProducts } from '../db.js';
 import { icon, esc, emptyState, downloadFile } from '../ui.js';
 import { currentTaxSystem } from '../tax.js';
 import { openBusinessReview } from '../review.js';
+import { formatMoney } from '../currency.js';
 import { toCsv } from '../csv.js';
 
 function money(n) {
-  return `${db.settings.currency || 'Rs'} ${Number(n || 0).toLocaleString()}`;
+  return formatMoney(n);
 }
 
 function rangeBounds(range) {

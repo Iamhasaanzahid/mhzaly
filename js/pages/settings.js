@@ -6,8 +6,12 @@ import { db, save, exportDb, importDb, clearAll, loadSampleData, SHOP_TYPES } fr
 import { icon, esc, toast, confirmDialog, downloadFile, linkLabels } from '../ui.js';
 import { getThemeChoice, setThemeChoice } from '../theme.js';
 import { printReceipt } from '../receipt-share.js';
-import { TAX_SYSTEMS, taxSystem, qrSvg, saleVerifyUrl } from '../tax.js';
+import { TAX_SYSTEMS, taxSystem, qrSvg, saleVerifyUrl, applyTaxCountry } from '../tax.js';
 import { LANGS, getLang, languageOptions, coverage, setLang, applyLang } from '../i18n.js';
+import {
+  COUNTRIES, CURRENCIES, countryOptions, currencyOptions,
+  applyCountry, applyCurrency, applyLanguageCountry, formatMoney, formatDate, countryProfile,
+} from '../currency.js';
 
 export const meta = { title: 'Settings', subtitle: 'Shop details, backup and preferences' };
 
@@ -143,8 +147,22 @@ export function render(root) {
           <form id="prefForm">
             <div class="form-grid">
               <div class="field">
-                <label>Currency symbol</label>
+                <label>Country</label>
+                <select class="input" name="country" id="countrySelect">${countryOptions(s.country || 'PK')}</select>
+                <span class="hint">Country badlte hi currency, number format aur tax system apne aap set ho jate hain.</span>
+              </div>
+              <div class="field">
+                <label>Currency</label>
+                <select class="input" name="currencyCode" id="currencySelect">${currencyOptions(s.currencyCode || 'PKR')}</select>
+              </div>
+              <div class="field">
+                <label>Currency symbol (custom)</label>
                 <input class="input" name="currency" value="${esc(s.currency)}" maxlength="4" placeholder="Rs" />
+              </div>
+              <div class="field">
+                <label>Number &amp; date format</label>
+                <input class="input" value="${esc(s.locale || 'en-PK')}" readonly />
+                <span class="hint">Locale: ${esc(s.locale || 'en-PK')} — preview: <b>${esc(formatMoney(1234.5))}</b> · ${esc(formatDate(Date.now(), s.locale || 'en-PK'))}</span>
               </div>
               <div class="field full">
                 <label>Default low-stock alert level</label>
@@ -373,6 +391,10 @@ export function render(root) {
     setLang(code);
     try {
       db.settings.language = code;
+      const profile = applyLanguageCountry(db.settings, code);
+      if (profile && profile.tax && profile.tax !== 'OTHER') {
+        applyTaxCountry(db.settings, profile.tax);
+      }
       save();
     } catch { /* sync unavailable */ }
     applyLang(document);
@@ -409,10 +431,47 @@ export function render(root) {
     e.preventDefault();
     const fd = new FormData(e.target);
     const low = Number(fd.get('lowStock'));
-    db.settings.currency = String(fd.get('currency') || 'Rs').trim() || 'Rs';
+    const country = String(fd.get('country') || 'PK');
+    const currencyCode = String(fd.get('currencyCode') || '');
+    applyCountry(db.settings, country);
+    if (currencyCode) applyCurrency(db.settings, currencyCode);
+    const custom = String(fd.get('currency') || '').trim();
+    if (custom) db.settings.currency = custom;
+    db.settings.currencyAuto = false;
     db.settings.lowStock = Number.isFinite(low) && low >= 0 ? low : 5;
     save();
     toast('Preferences saved');
+    rerender();
+  });
+
+  // Country change → auto currency + locale + matching tax system.
+  root.querySelector('#countrySelect').addEventListener('change', (e) => {
+    const profile = applyCountry(db.settings, e.target.value);
+    const currencyEl = root.querySelector('#currencySelect');
+    if (currencyEl && profile.currency) currencyEl.value = profile.currency;
+    const symbolEl = root.querySelector('[name="currency"]');
+    if (symbolEl) symbolEl.value = profile.symbol || '';
+    const taxCountry = root.querySelector('#taxCountry');
+    if (taxCountry && profile.tax && profile.tax !== 'OTHER') {
+      taxCountry.value = profile.tax;
+      taxCountry.dispatchEvent(new Event('change'));
+      applyTaxCountry(db.settings, profile.tax);
+      const rateEl = root.querySelector('#taxRate');
+      if (rateEl) rateEl.value = db.settings.taxRate;
+    }
+    save();
+    rerender();
+  });
+
+  // Currency change → symbol + locale + country in one go.
+  root.querySelector('#currencySelect').addEventListener('change', (e) => {
+    const preset = applyCurrency(db.settings, e.target.value);
+    if (!preset) return;
+    const symbolEl = root.querySelector('[name="currency"]');
+    if (symbolEl) symbolEl.value = preset.symbol;
+    const countryEl = root.querySelector('#countrySelect');
+    if (countryEl) countryEl.value = preset.country;
+    save();
     rerender();
   });
 

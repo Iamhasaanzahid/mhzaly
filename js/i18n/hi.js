@@ -379,4 +379,13 @@ export default {
   'Search result / form save': 'खोज परिणाम / फ़ॉर्म सेव',
   'Ye shortcut list': 'यह shortcut सूची है',
   'Refresh karein taake latest mhzaly features mil jayein.': 'ताज़ा mhzaly features ke liye refresh karein.',
+  'Aaj ka munafa': 'आज का लाभ',
+  'Customers se lena hai': 'ग्राहकों से लेना है',
+  'Sab theek hai': 'सब ठीक है',
+  'Restock karein': 'Restock karein',
+  'Aaj ka summary': 'आज का सारांश',
+  'Is mahine': 'इस महीने',
+  'Is hafte': 'इस हफ्ते',
+  'Aaj': 'आज',
+  'Kal': 'कल',
 };

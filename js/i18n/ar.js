@@ -381,4 +381,13 @@ export default {
   'Search result / form save': 'نتيجة البحث / حفظ النموذج',
   'Ye shortcut list': 'هذه قائمة الاختصارات',
   'Refresh karein taake latest mhzaly features mil jayein.': 'حدّث للحصول على أحدث ميزات mhzaly.',
+  'Aaj ka munafa': 'ربح اليوم',
+  'Customers se lena hai': 'مطلوب من العملاء',
+  'Sab theek hai': 'كل شيء بخير',
+  'Restock karein': 'أعد الطلب',
+  'Aaj ka summary': 'ملخص اليوم',
+  'Is mahine': 'هذا الشهر',
+  'Is hafte': 'هذا الأسبوع',
+  'Aaj': 'اليوم',
+  'Kal': 'غدًا',
 };

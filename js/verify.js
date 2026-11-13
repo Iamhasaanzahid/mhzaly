@@ -50,9 +50,26 @@ function readPayload() {
   }
 }
 
-function money(value, currency) {
+function money(value, currency, code, locale) {
   const n = Number(value) || 0;
-  return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (code) {
+    try {
+      return new Intl.NumberFormat(locale || 'en-US', {
+        style: 'currency',
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(n);
+    } catch { /* unknown code — fall back */ }
+  }
+  try {
+    return `${currency} ${new Intl.NumberFormat(locale || 'en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)}`;
+  } catch {
+    return `${currency} ${n.toFixed(2)}`;
+  }
 }
 
 function formatDate(value) {
@@ -84,6 +101,8 @@ function errorCard() {
 
 function invoiceCard(data) {
   const currency = data.currency || 'Rs';
+  const currencyCode = data.currencyCode || '';
+  const locale = data.locale || '';
   const country = COUNTRY_NAMES[data.country] || data.country || '—';
   const system = data.taxSystem || 'Tax';
   const rate = Number(data.taxRate) || 0;
@@ -116,11 +135,11 @@ function invoiceCard(data) {
     </div>
 
     <div class="amounts">
-      <div class="row"><span>Subtotal</span><b>${esc(money(subtotal, currency))}</b></div>
-      ${discount > 0 ? `<div class="row"><span>Discount</span><b>− ${esc(money(discount, currency))}</b></div>` : ''}
-      <div class="row"><span>Taxable amount</span><b>${esc(money(taxable, currency))}</b></div>
-      <div class="row"><span>${esc(system)} (${esc(rate)}%)</span><b>${esc(money(tax, currency))}</b></div>
-      <div class="row total"><span>Total</span><b>${esc(money(total, currency))}</b></div>
+      <div class="row"><span>Subtotal</span><b>${esc(money(subtotal, currency, currencyCode, locale))}</b></div>
+      ${discount > 0 ? `<div class="row"><span>Discount</span><b>− ${esc(money(discount, currency, currencyCode, locale))}</b></div>` : ''}
+      <div class="row"><span>Taxable amount</span><b>${esc(money(taxable, currency, currencyCode, locale))}</b></div>
+      <div class="row"><span>${esc(system)} (${esc(rate)}%)</span><b>${esc(money(tax, currency, currencyCode, locale))}</b></div>
+      <div class="row total"><span>Total</span><b>${esc(money(total, currency, currencyCode, locale))}</b></div>
     </div>
 
     <div class="note">

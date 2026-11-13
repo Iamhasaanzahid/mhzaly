@@ -1,0 +1,35 @@
+# mhzaly — Cloudflare Pages redirects
+# Sensitive / probing paths are answered with a real 404 (never the app shell).
+# The app uses hash routing (#/dashboard), so no server-side SPA fallback is needed.
+
+/.git/*            /404.html   404
+/git/*            /404.html   404
+/.git             /404.html   404
+/.env             /404.html   404
+/.env.*           /404.html   404
+/.aws             /404.html   404
+/.ssh             /404.html   404
+/.npmrc           /404.html   404
+/.dockerignore    /404.html   404
+/.htaccess        /404.html   404
+/.DS_Store        /404.html   404
+/config*          /404.html   404
+/backup*          /404.html   404
+/*.zip            /404.html   404
+/*.tar            /404.html   404
+/*.gz             /404.html   404
+/*.sql            /404.html   404
+/*.log            /404.html   404
+/*.bak            /404.html   404
+/secret*          /404.html   404
+/secrets*         /404.html   404
+/credentials*     /404.html   404
+/api/*            /404.html   404
+/swagger*         /404.html   404
+/graphql          /404.html   404
+/phpinfo.php      /404.html   404
+/xmlrpc.php       /404.html   404
+/metrics          /404.html   404
+/wp-admin/*       /404.html   404
+/wp-login.php     /404.html   404
+/server-status    /404.html   404

@@ -379,4 +379,13 @@ export default {
   'Search result / form save': 'Suchergebnis / Formular speichern',
   'Ye shortcut list': 'Diese Shortcut-Liste',
   'Refresh karein taake latest mhzaly features mil jayein.': 'Für die neuesten mhzaly-Funktionen neu laden.',
+  'Aaj ka munafa': 'Heutiger Gewinn',
+  'Customers se lena hai': 'Von Kunden einzufordern',
+  'Sab theek hai': 'Alles in Ordnung',
+  'Restock karein': 'Nachbestellen',
+  'Aaj ka summary': 'Heutige Übersicht',
+  'Is mahine': 'Diesen Monat',
+  'Is hafte': 'Diese Woche',
+  'Aaj': 'Heute',
+  'Kal': 'Morgen',
 };
