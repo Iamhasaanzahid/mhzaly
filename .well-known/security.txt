@@ -1,0 +1,10 @@
+Contact: mailto:mhzcyb@gmail.com
+Preferred-Languages: en, ur
+Canonical: https://mhzaly.pages.dev/.well-known/security.txt
+Expires: 2027-12-31T00:00:00.000Z
+
+# mhzaly — security contact
+# Report vulnerabilities responsibly. We aim to acknowledge within 24 hours
+# and to ship a fix within 7 days for confirmed issues.
+# Please do not run automated scanners against the live site or attempt
+# denial-of-service. Test accounts are available on request.

@@ -4,7 +4,7 @@
 
 import { db, uid, save, totalReceivable } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
-import { money } from '../receipt-share.js';
+import { money, normalizePhone } from '../receipt-share.js';
 import { customerLedger, openStatement } from '../statement.js';
 import { customerRisk, customerSegments } from '../insights.js';
 import { toCsv } from '../csv.js';
@@ -162,6 +162,7 @@ export function render(root) {
         </td>
         <td style="text-align:right; white-space:nowrap">
           <button class="btn btn-ghost btn-sm" data-statement="${esc(c.id)}" title="Statement / ledger">${icon('chart')}</button>
+          ${bal > 0 ? `<button class="btn btn-ghost btn-sm" data-remind="${esc(c.id)}" title="WhatsApp reminder bhejein">${icon('sparkle')}</button>` : ''}
           ${bal > 0 ? `<button class="btn btn-primary btn-sm" data-receive="${esc(c.id)}" title="Payment receive">${icon('wallet')}</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit="${esc(c.id)}" title="Edit">${icon('settings')}</button>
           <button class="btn btn-ghost btn-sm" data-del="${esc(c.id)}" title="Delete">${icon('trash')}</button>
@@ -237,6 +238,27 @@ export function render(root) {
     });
   }
 
+  function sendReminder(c) {
+    const bal = Number(c.balance) || 0;
+    const risk = customerRisk(c);
+    const shop = db.settings.shopName || 'My Mart';
+    const lines = [
+      `Assalam-o-Alaikum ${c.name} ji,`,
+      '',
+      `${shop} ka khata update kar raha hoon. Aap ka baqi udhaar *${money(bal)}* hai.`,
+      risk.reason && risk.reason !== 'Payment history normal hai' ? `(${risk.reason})` : '',
+      '',
+      'Jab convenient ho payment kar dein, ya koi sawaal ho to zaroor bataiye. Shukriya!',
+      '',
+      '— ' + shop,
+    ].filter(Boolean);
+    const digits = normalizePhone(c.phone || '');
+    const text = encodeURIComponent(lines.join('\n'));
+    if (digits) window.open(`https://wa.me/${digits}?text=${text}`, '_blank');
+    else window.open(`https://wa.me/?text=${text}`, '_blank');
+    toast('WhatsApp reminder tayyar hai — Send dabayein');
+  }
+
   function openReceive(c) {
     const bal = Number(c.balance) || 0;
     openModal({
@@ -298,6 +320,12 @@ export function render(root) {
     if (statement) {
       const c = db.customers.find((x) => x.id === statement.dataset.statement);
       if (c) openStatement(customerLedger(c));
+      return;
+    }
+    const remind = e.target.closest('[data-remind]');
+    if (remind) {
+      const c = db.customers.find((x) => x.id === remind.dataset.remind);
+      if (c) sendReminder(c);
       return;
     }
     const receive = e.target.closest('[data-receive]');

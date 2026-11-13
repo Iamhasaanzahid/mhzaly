@@ -71,6 +71,12 @@ for (const dir of DIRS) {
   fs.cpSync(src, path.join(dist, dir), { recursive: true });
 }
 
+// RFC 9116 security contact file
+const wellKnown = path.join(root, '.well-known');
+if (fs.existsSync(wellKnown)) {
+  fs.cpSync(wellKnown, path.join(dist, '.well-known'), { recursive: true });
+}
+
 /* ---------- version the HTML asset references ---------- */
 const VERSIONABLE = /^\.\/(js\/|css\/|icon\.svg$|manifest\.json$)/;
 for (const file of ['index.html', 'owner.html', 'verify.html', '404.html']) {

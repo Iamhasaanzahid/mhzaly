@@ -47,6 +47,10 @@
   Cache-Control: no-store, max-age=0, must-revalidate
   X-Robots-Tag: noindex, nofollow, noarchive
 
+/verify
+  Cache-Control: no-store, max-age=0, must-revalidate
+  X-Robots-Tag: noindex, nofollow, noarchive
+
 /404.html
   Cache-Control: public, max-age=60, s-maxage=600
   X-Robots-Tag: noindex, nofollow

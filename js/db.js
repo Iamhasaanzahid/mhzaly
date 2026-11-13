@@ -70,6 +70,11 @@ export function defaultSettings() {
     restockLeadDays: 7,
     restockCoverDays: 14,
     language: 'ur',
+    aiEngine: 'builtin',
+    aiEndpoint: '',
+    aiModel: '',
+    aiKey: '',
+    aiTemperature: 0.2,
   };
 }
 

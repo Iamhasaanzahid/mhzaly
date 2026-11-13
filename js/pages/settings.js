@@ -8,6 +8,7 @@ import { getThemeChoice, setThemeChoice } from '../theme.js';
 import { printReceipt } from '../receipt-share.js';
 import { TAX_SYSTEMS, taxSystem, qrSvg, saleVerifyUrl, applyTaxCountry } from '../tax.js';
 import { LANGS, getLang, languageOptions, coverage, setLang, applyLang } from '../i18n.js';
+import { aiConfig, saveAiConfig, discoverLocalModels, listOllamaModels, ping } from '../ai/local.js';
 import {
   COUNTRIES, CURRENCIES, countryOptions, currencyOptions,
   applyCountry, applyCurrency, applyLanguageCountry, formatMoney, formatDate, countryProfile,
@@ -55,6 +56,7 @@ function sampleSale() {
 export function render(root) {
   const s = db.settings;
   const currentLang = LANGS.find((l) => l.code === getLang()) || LANGS[0];
+  const aiCfg = aiConfig();
   const shop = s.shopName || 'My Mart';
   let logoData = s.logo || '';
   const previewTaxRate = Number(s.taxRate) || 0;
@@ -250,6 +252,51 @@ export function render(root) {
 
     <div class="card mt">
       <div class="card-head">
+        <h3>AI Engine</h3>
+        <div class="right"><span class="badge teal" id="aiEngineBadge">${esc(aiCfg.mode === 'local' && aiCfg.model ? aiCfg.model : 'Built-in · Free')}</span></div>
+      </div>
+      <div class="card-pad">
+        <p class="small muted" style="margin-top:0">
+          mhzaly ka built-in AI poori tarah offline chalta hai aur free hai. Agar aap apne PC par
+          <b>Ollama</b>, <b>LM Studio</b> ya koi bhi local model chalate hain to yahan connect karein —
+          jawab aur behtar samajh aayenge, aur data aap ke hi machine par rahega (koi paid API key nahi).
+        </p>
+        <form id="aiForm">
+          <div class="form-grid">
+            <div class="field">
+              <label>Engine</label>
+              <select class="input" name="aiEngine" id="aiEngineMode">
+                <option value="builtin"${aiCfg.mode !== 'local' ? ' selected' : ''}>Built-in offline AI (recommended)</option>
+                <option value="local"${aiCfg.mode === 'local' ? ' selected' : ''}>Local model (Ollama / LM Studio / OpenAI-compatible)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Local endpoint</label>
+              <input class="input" name="aiEndpoint" id="aiEndpoint" value="${esc(aiCfg.endpoint)}" placeholder="http://localhost:11434" />
+              <span class="hint">Ollama default: http://localhost:11434 · LM Studio: http://localhost:1234/v1</span>
+            </div>
+            <div class="field">
+              <label>Model</label>
+              <input class="input" name="aiModel" id="aiModel" value="${esc(aiCfg.model)}" placeholder="llama3.1 / qwen2.5 / mistral" list="aiModelList" />
+              <datalist id="aiModelList"></datalist>
+            </div>
+            <div class="field">
+              <label>API key (optional)</label>
+              <input class="input" name="aiKey" id="aiKey" type="password" value="${esc(aiCfg.key)}" placeholder="Sirf remote endpoint ke liye" autocomplete="off" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-ghost" type="button" id="aiDetect">${icon('search')} Detect local models</button>
+            <button class="btn btn-ghost" type="button" id="aiTest">${icon('check')} Test connection</button>
+            <button class="btn btn-primary" type="submit">${icon('check')} Save AI engine</button>
+          </div>
+          <div id="aiStatus" class="small muted" style="margin-top:10px"></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt">
+      <div class="card-head">
         <h3>Language</h3>
         <div class="right"><span class="badge teal">${esc(currentLang.native)}</span></div>
       </div>
@@ -385,6 +432,69 @@ export function render(root) {
       root.querySelectorAll('[data-theme-choice]').forEach((b) => b.classList.toggle('active', b === btn));
       toast(choice === 'system' ? 'Theme: device ke mutabiq' : `Theme: ${choice === 'dark' ? 'Dark' : 'Light'} mode`, 'success');
     });
+  });
+
+  /* ---------- AI engine (built-in offline / local model) ---------- */
+  const aiStatus = root.querySelector('#aiStatus');
+  const aiEndpointEl = root.querySelector('#aiEndpoint');
+  const aiModelEl = root.querySelector('#aiModel');
+  const aiModeEl = root.querySelector('#aiEngineMode');
+
+  function setAiStatus(text, tone = '') {
+    if (!aiStatus) return;
+    aiStatus.innerHTML = text;
+    aiStatus.className = 'small' + (tone ? ` ${tone}` : ' muted');
+  }
+
+  root.querySelector('#aiDetect')?.addEventListener('click', async () => {
+    setAiStatus('Local servers dhoondh rahe hain…');
+    const found = await discoverLocalModels();
+    if (!found.length) {
+      setAiStatus('Koi local model server nahi mila. Ollama install karein (<code>ollama serve</code>) aur "ollama pull llama3.1" chalayein — bilkul free hai.', 'text-warn');
+      return;
+    }
+    const list = root.querySelector('#aiModelList');
+    const options = [];
+    for (const entry of found) {
+      for (const model of entry.models) options.push(model.name);
+    }
+    if (list) list.innerHTML = options.map((n) => `<option value="${esc(n)}"></option>`).join('');
+    const first = found[0];
+    if (aiEndpointEl && !aiEndpointEl.value) aiEndpointEl.value = first.url;
+    if (aiModelEl && !aiModelEl.value && first.models.length) aiModelEl.value = first.models[0].name;
+    setAiStatus(
+      `✅ ${found.length} local server mila: ${found.map((f) => `${esc(f.label)} (${f.models.length} model)`).join(', ')}`,
+      'text-ok'
+    );
+  });
+
+  root.querySelector('#aiTest')?.addEventListener('click', async () => {
+    const endpoint = (aiEndpointEl?.value || '').replace(/\/+$/, '');
+    if (!endpoint) return setAiStatus('Pehle endpoint likhein.', 'text-warn');
+    setAiStatus('Test kar rahe hain…');
+    const result = await ping(endpoint);
+    if (!result.ok) {
+      setAiStatus(`❌ Connect nahi hua: ${esc(result.error)}. Note: https page se http local server browser block kar sakta hai — app ko localhost par chala kar dekhein.`, 'text-warn');
+      return;
+    }
+    const names = result.models.map((m) => m.name);
+    if (aiModelEl && !aiModelEl.value && names.length) aiModelEl.value = names[0];
+    const list = root.querySelector('#aiModelList');
+    if (list) list.innerHTML = names.map((n) => `<option value="${esc(n)}"></option>`).join('');
+    setAiStatus(`✅ Connected! ${names.length} model available: ${esc(names.slice(0, 6).join(', ')) || '—'}`, 'text-ok');
+  });
+
+  root.querySelector('#aiForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveAiConfig({
+      mode: aiModeEl?.value || 'builtin',
+      endpoint: aiEndpointEl?.value || '',
+      model: aiModelEl?.value || '',
+      key: root.querySelector('#aiKey')?.value || '',
+    });
+    save();
+    toast('AI engine saved');
+    rerender();
   });
 
   const switchLang = (code) => {

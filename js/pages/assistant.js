@@ -8,6 +8,9 @@ import { db, lowStockProducts, totalReceivable } from '../db.js';
 import { icon, esc, toast } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { businessHealth, restockPlan, customerRisk, dayCloseSummary, forecastNext7, taxSummary, profitLeaks, customerSegments } from '../insights.js';
+import { aiConfig, askLocal } from '../ai/local.js';
+import { buildShopContext, systemPrompt } from '../ai/context.js';
+import { whatIf, anomalyAnswer, planAnswer } from '../ai/advanced.js';
 
 export const meta = { title: 'AI Assistant', subtitle: 'Aap ke shop data se smart jawab' };
 
@@ -322,6 +325,22 @@ function answer(raw) {
     return `<b>Main ye sab bata sakta hoon:</b><ul><li>Business health score aur action plan</li><li>Profit leak finder — paisa kahan ja raha hai</li><li>Smart restock, dead stock aur forecast</li><li>Day close / cash reconciliation</li><li>Customer credit risk aur RFM segments</li><li>Aaj / kal / hafte / mahine ki sale aur profit</li><li>Sab se zyada / kam bikne wale products</li><li>Top customers aur unka udhaar</li><li>Kisi product ka stock, price, margin</li><li>Inventory ki kul value</li><li>Customer ya supplier ka balance</li><li>Kharcha category ke mutabiq</li><li>Tax aur payment method ka hisab</li><li>Aaj ka poora summary</li></ul>Bas apna sawal likhein ya 🎤 mic se bolain.`;
   }
 
+  /* what-if simulator ("agar 10% discount dun to...") */
+  if (/\b(agar|if|suppose|what if|jab)\b/.test(q) && /(discount|kam|off|price|bech|bik|qty|quantity|unit|barha|badha)/.test(q)) {
+    const sim = whatIf(q);
+    if (sim) return sim;
+  }
+
+  /* anomaly detection */
+  if (/\b(anomaly|anomalies|ajeeb|gadbad|unusual|weird|problem|kuch galat|check karo)\b/.test(q)) {
+    return anomalyAnswer();
+  }
+
+  /* plain-language action plan */
+  if (/\b(action plan|kya karun|kya karna hai|next step|agla kaam|plan do|priorities)\b/.test(q)) {
+    return planAnswer();
+  }
+
   /* low stock / out of stock (before health so "restock kya karun" wins) */
   if (/\b(low stock|stock kam|kam stock|khatam|out of stock|reorder|stock alert|restock)\b/.test(q)) {
     if (/restock|reorder|order|maal mangwa|kya order/.test(q)) return restockAnswer();
@@ -513,6 +532,71 @@ function answer(raw) {
   return `Main ye sawal samajh nahi saka. 🤔<br>Ye try karein:<ul><li>"Aaj ki sale kitni hai?"</li><li>"Kal se compare karo"</li><li>"Is mahine ka profit?"</li><li>"Low stock products?"</li><li>"Top customer?"</li><li>"Stock ki value?"</li><li>"Restock kya karun?"</li><li>"Aaj ka summary"</li></ul>`;
 }
 
+/* ---------- engine: offline rules + optional local LLM ---------- */
+
+const FALLBACK_MARK = 'Main ye sawal samajh nahi saka';
+
+/** Render a local model's plain text as safe, simple HTML. */
+export function formatModelText(text) {
+  const escaped = esc(String(text || '').trim());
+  return escaped
+    .replace(/```([\s\S]*?)```/g, '<pre class="ai-code">$1</pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|\s)\*([^*\n]+)\*/g, '$1<i>$2</i>')
+    .replace(/^###\s*(.+)$/gm, '<div class="ai-h4">$1</div>')
+    .replace(/^##\s*(.+)$/gm, '<div class="ai-h4">$1</div>')
+    .replace(/^#\s*(.+)$/gm, '<div class="ai-h4">$1</div>')
+    .replace(/^[-*]\s+/gm, '• ')
+    .replace(/^(\d+)\.\s+/gm, '$1. ')
+    .replace(/\n{2,}/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
+function wantsDeepAnalysis(q) {
+  return /\b(deep|detail|thorough|analysis|analise|report|business review|samjhao samjhao|explain)\b/.test(q);
+}
+
+/**
+ * The AI entry point. Uses the local model (Ollama / LM Studio / any
+ * OpenAI-compatible server) when configured and reachable, otherwise the
+ * built-in offline engine. Both are 100% free.
+ */
+export async function askAi(raw) {
+  const q = String(raw || '').trim();
+  const offline = answer(q);
+  const cfg = aiConfig();
+
+  if (cfg.mode !== 'local' || !cfg.endpoint || !cfg.model) {
+    return { text: offline, engine: 'builtin', model: '' };
+  }
+
+  const needsModel = offline.includes(FALLBACK_MARK) || wantsDeepAnalysis(q);
+  if (!needsModel) {
+    return { text: offline, engine: 'builtin', model: '' };
+  }
+
+  try {
+    const context = buildShopContext();
+    const reply = await askLocal(systemPrompt(context), q);
+    if (reply.text) {
+      return {
+        text: formatModelText(reply.text),
+        engine: reply.engine,
+        model: reply.model,
+        note: `Local model: ${reply.model}`,
+      };
+    }
+    return { text: offline, engine: 'builtin', model: '' };
+  } catch (err) {
+    return {
+      text: `${offline}<br><span style="color:#b45309">Local model se connect nahi ho saka (${esc(err.message)}) — offline jawab dikhaya gaya hai.</span>`,
+      engine: 'builtin',
+      model: '',
+    };
+  }
+}
+
 /* ---------- render ---------- */
 export function render(root) {
   root.innerHTML = `
@@ -522,7 +606,8 @@ export function render(root) {
         <p>Apne shop ke baare mein sawal poochhein — jawab aap ke data se, bina internet.</p>
       </div>
       <div class="head-actions">
-        <span class="pill brand">${icon('sparkle')} Offline · Free</span>
+        <span class="pill brand" id="aiEngineBadge">${icon('sparkle')} Offline · Free</span>
+        <button class="btn btn-ghost" id="aiDeep" type="button">${icon('sparkle')} Deep analysis</button>
       </div>
     </div>
 
@@ -534,6 +619,7 @@ export function render(root) {
             <h3>mhzaly AI</h3>
             <p>Aap ke shop data se smart jawab · koi API key nahi</p>
           </div>
+          <button class="btn btn-ghost btn-sm" id="aiRead" type="button" title="Jawab bol ke sunao">${icon('sparkle')}</button>
           <button class="btn btn-ghost btn-sm" id="aiClear" type="button">Clear</button>
         </div>
         <div class="ai-log" id="aiLog"></div>
@@ -553,15 +639,38 @@ export function render(root) {
   const form = root.querySelector('#aiForm');
   const input = root.querySelector('#aiText');
 
+  const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  let autoRead = false;
+
+  function speak(text) {
+    if (!canSpeak || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(String(text).replace(/\s+/g, ' ').trim());
+      utter.lang = (db.settings && db.settings.locale) || 'en-PK';
+      utter.rate = 1;
+      window.speechSynthesis.speak(utter);
+    } catch { /* speech not available */ }
+  }
+
   function add(html, who) {
     const el = document.createElement('div');
     el.className = `ai-msg ${who}`;
-    el.innerHTML = `<div class="ai-bubble">${html}</div>`;
+    const plain = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    el.innerHTML = `<div class="ai-bubble">${html}${who === 'bot' && canSpeak ? `<button class="ai-speak" type="button" title="Bol ke sunao" aria-label="Read aloud">${icon('sparkle')}</button>` : ''}</div>`;
+    const btn = el.querySelector('.ai-speak');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        speak(plain);
+        btn.classList.add('on');
+        setTimeout(() => btn.classList.remove('on'), 1200);
+      });
+    }
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
   }
 
-  function ask(text) {
+  async function ask(text) {
     const q = String(text||'').trim();
     if (!q) return;
     add(esc(q), 'user');
@@ -571,10 +680,19 @@ export function render(root) {
     typing.innerHTML = `<div class="ai-bubble ai-typing"><span></span><span></span><span></span></div>`;
     log.appendChild(typing);
     log.scrollTop = log.scrollHeight;
-    setTimeout(() => {
+    try {
+      const result = await askAi(q);
       typing.remove();
-      add(answer(q), 'bot');
-    }, 320);
+      const suffix = result.note ? `<div class="ai-engine-note">${esc(result.note)}</div>` : '';
+      add(result.text + suffix, 'bot');
+      if (autoRead) {
+        const plain = String(result.text).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        speak(plain);
+      }
+    } catch (err) {
+      typing.remove();
+      add(`Kuch gadbad ho gayi: ${esc(err.message)}`, 'bot');
+    }
   }
 
   add(
@@ -582,11 +700,38 @@ export function render(root) {
     'bot'
   );
 
+  const cfg = aiConfig();
+  const badge = root.querySelector('#aiEngineBadge');
+  if (badge) {
+    badge.innerHTML = cfg.mode === 'local' && cfg.model
+      ? `${icon('sparkle')} Local · ${esc(cfg.model)}`
+      : `${icon('sparkle')} Offline · Free`;
+  }
+  const deepBtn = root.querySelector('#aiDeep');
+  if (deepBtn) {
+    deepBtn.addEventListener('click', () => {
+      ask('Is mahine ka deep business analysis karo — kya acha chal raha hai, kya kharab hai, aur kal kya karun.');
+    });
+  }
+
   form.addEventListener('submit', (e) => { e.preventDefault(); ask(input.value); });
   root.querySelector('#aiChips').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-q]');
     if (chip) ask(chip.dataset.q);
   });
+  const readBtn = root.querySelector('#aiRead');
+  if (readBtn) {
+    if (!canSpeak) {
+      readBtn.hidden = true;
+    } else {
+      readBtn.addEventListener('click', () => {
+        autoRead = !autoRead;
+        readBtn.classList.toggle('on', autoRead);
+        toast(autoRead ? 'Jawab bol kar sunaega' : 'Voice off');
+      });
+    }
+  }
+
   root.querySelector('#aiClear').addEventListener('click', () => {
     log.innerHTML = '';
     add('<b>Chat clear ho gayi.</b> Naya sawal poochhein.', 'bot');

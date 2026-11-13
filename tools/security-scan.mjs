@@ -55,7 +55,7 @@ const SECRET_PATTERNS = [
 ];
 
 /* ---------- files that must exist ---------- */
-const REQUIRED = ['index.html', 'sw.js', '_headers', '404.html', 'manifest.json', 'js/app.js'];
+const REQUIRED = ['index.html', 'sw.js', '_headers', '_redirects', '404.html', 'manifest.json', 'js/app.js', 'js/i18n.js', 'js/currency.js'];
 
 /* ---------- files that must never be published ---------- */
 const FORBIDDEN_PUBLISH = ['server/worker.js', 'cloudflare/worker.js', 'server/schema.sql', 'tools/security-scan.mjs'];
