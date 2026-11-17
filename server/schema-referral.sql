@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS automatons (
   wallet_address TEXT,
   api_key_hash TEXT,
   commission_pct REAL NOT NULL DEFAULT 30,
+  daily_target_usd REAL NOT NULL DEFAULT 130,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

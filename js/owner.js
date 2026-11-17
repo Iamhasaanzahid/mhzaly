@@ -6,7 +6,7 @@ const API_BASE = 'https://mhzaly-api.mhzaly.workers.dev';
 const TOKEN_KEY = 'mhzaly_owner_token';
 const app = document.getElementById('ownerApp');
 
-const PLAN_DAYS = { trial: 14, monthly: 30, quarterly: 90, annual: 365, lifetime: null };
+const PLAN_DAYS = { trial: 1, monthly: 30, quarterly: 90, annual: 365, lifetime: null };
 const PLAN_LABELS = {
   trial: 'Trial',
   monthly: 'Monthly',
@@ -339,6 +339,204 @@ function renderDashboard() {
 
 let agentMessages = [];
 
+/* ---- Ollama brain (real local model; rule-based fallback) ---- */
+const BRAIN_KEY = 'mhzaly_agent_brain';
+let brainState = { checked: false, endpoint: '', model: '', models: [], error: '', enabled: true };
+let brainBusy = false;
+
+function brainConfig() {
+  try { return JSON.parse(localStorage.getItem(BRAIN_KEY) || '{}'); } catch { return {}; }
+}
+
+function brainSave(patch) {
+  const next = { ...brainConfig(), ...patch };
+  try { localStorage.setItem(BRAIN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  return next;
+}
+
+async function fetchWithTimeout(url, opts = {}, ms = 4000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function brainProbe(force = false) {
+  if (brainState.checked && !force) return brainState;
+  const cfg = brainConfig();
+  const candidates = [cfg.endpoint, 'http://localhost:11435', 'http://localhost:11434', 'http://127.0.0.1:11434', 'http://localhost:1234/v1']
+    .filter(Boolean)
+    .map((u) => String(u).replace(/\/+$/, ''))
+    .filter((u, i, arr) => arr.indexOf(u) === i);
+
+  brainState = { checked: true, endpoint: '', model: cfg.model || '', models: [], error: '', enabled: cfg.enabled !== false };
+
+  for (const base of candidates) {
+    try {
+      const url = /\/v1$/.test(base) ? `${base}/models` : `${base}/api/tags`;
+      const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } }, 3500);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const entries = Array.isArray(data.models)
+        ? data.models.map((m) => ({ name: m.name, size: Number(m.size) || 0 }))
+        : Array.isArray(data.data)
+          ? data.data.map((m) => ({ name: m.id, size: 0 }))
+          : [];
+      const models = entries
+        .filter((e) => e.name)
+        .sort((a, b) => (a.size || Number.MAX_SAFE_INTEGER) - (b.size || Number.MAX_SAFE_INTEGER))
+        .map((e) => e.name);
+      if (!models.length) throw new Error('koi model nahi mila');
+      brainState.endpoint = base;
+      brainState.models = models;
+      brainState.model = models.includes(cfg.model) ? cfg.model : models[0];
+      brainState.error = '';
+      return brainState;
+    } catch (err) {
+      brainState.error = `${base}: ${err.message || err}`;
+    }
+  }
+  return brainState;
+}
+
+async function brainComplete(messages, { json = false, timeout = 60000 } = {}) {
+  if (!brainState.endpoint || !brainState.model) throw new Error('Ollama connected nahi hai');
+  const base = brainState.endpoint;
+  const isOpenAI = /\/v1$/.test(base);
+  const url = isOpenAI ? `${base}/chat/completions` : `${base}/api/chat`;
+  const payload = isOpenAI
+    ? {
+        model: brainState.model,
+        messages,
+        temperature: 0.1,
+        max_tokens: 180,
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
+      }
+    : {
+        model: brainState.model,
+        messages,
+        stream: false,
+        think: false,
+        keep_alive: '30m',
+        options: { temperature: 0.1, num_predict: 180 },
+        ...(json ? { format: 'json' } : {}),
+      };
+  const res = await fetchWithTimeout(
+    url,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+    timeout
+  );
+  if (!res.ok) throw new Error(`brain HTTP ${res.status}`);
+  const data = await res.json();
+  return isOpenAI
+    ? String(data.choices?.[0]?.message?.content || '')
+    : String(data.message?.content || '');
+}
+
+function parseBrainJson(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { /* try braces */ }
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+  }
+  return null;
+}
+
+async function brainInterpret(message) {
+  const proofs = (state.agent?.proofs || []).map((p, i) => ({
+    index: i,
+    id: p.id,
+    shop: p.shopName,
+    amount: p.amount,
+    currency: p.currency,
+    automaton: p.automatonName || '',
+  }));
+  const system = `/no_think\nYou are the brain of the mhzaly owner payment agent. Reply with JSON only.
+Schema: {"intent":"confirm|deny|wallet|automaton|split|remind|reject|status|question","proofIndex":number|null,"answer":"Roman Urdu answer or empty"}
+Rules:
+- payment received / haan / mila / aa gayi -> confirm
+- nahi / nahi mila / not received -> deny
+- wallet / address / usdc -> wallet
+- automaton / agent kaam kar raha -> automaton
+- split / 70 / 30 / share / commission -> split
+- reminder / email bhejo -> remind
+- reject / fake receipt -> reject
+- summary / status / kitna -> status
+- anything else -> question
+Pending proofs: ${JSON.stringify(proofs)}
+Never invent amounts. Answer under 60 words in Roman Urdu.`;
+
+  const content = await brainComplete(
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: message },
+    ],
+    { json: true, timeout: 25000 }
+  );
+  return parseBrainJson(content);
+}
+
+async function brainAnswer(message) {
+  const snap = state.agent || {};
+  const data = {
+    summary: snap.summary,
+    split: snap.split,
+    payout: snap.payout,
+    proofs: (snap.proofs || []).map((p) => ({
+      shop: p.shopName,
+      amount: p.amount,
+      currency: p.currency,
+      channel: p.channelLabel,
+      automaton: p.automatonName,
+      estimatedCommissionUsd: p.estimatedCommissionUsd,
+      wallet: p.walletAddress,
+    })),
+    payouts: (snap.payouts || []).map((p) => ({
+      automaton: p.automatonName,
+      amountUsd: p.amountUsd,
+      status: p.status,
+      wallet: p.walletAddress,
+      dueAt: p.dueAt,
+    })),
+    automatons: snap.automatons,
+  };
+  const system = `/no_think\nAap mhzaly ke owner ke payment agent hain. Sirf neeche diye DATA se Roman Urdu mein 1-3 line ka jawab dein. Koi amount ya wallet invent mat karein. Agar jawab data mein nahi hai to likhein: "Ye data mere paas nahi hai."
+DATA: ${JSON.stringify(data)}`;
+  return brainComplete(
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: message },
+    ],
+    { timeout: 25000 }
+  );
+}
+
+function brainRenderControls() {
+  const sel = app.querySelector('#brainModel');
+  const status = app.querySelector('#brainStatus');
+  if (!sel || !status) return;
+  if (!brainState.models.length) {
+    sel.innerHTML = '<option value="">Rule-based</option>';
+    status.textContent = brainState.error ? 'Ollama nahi mila — rule-based mode' : 'Ollama check…';
+    status.style.color = '#b45309';
+    return;
+  }
+  sel.innerHTML = [
+    '<option value="">Rule-based</option>',
+    ...brainState.models.map(
+      (m) => `<option value="${esc(m)}"${m === brainState.model && brainState.enabled ? ' selected' : ''}>Ollama · ${esc(m)}</option>`
+    ),
+  ].join('');
+  status.textContent = `Ollama connected ✅ (${brainState.endpoint})`;
+  status.style.color = '#047857';
+}
+
 function agentBubble(m) {
   const mine = m.role === 'owner';
   return `<div style="display:flex;flex-direction:column;align-items:${mine ? 'flex-end' : 'flex-start'}">
@@ -347,6 +545,7 @@ function agentBubble(m) {
       <span>Wallet: <b class="mono">${esc(m.wallet)}</b></span>
       <button class="owner-btn sm" type="button" data-copy-wallet="${esc(m.wallet)}">Copy</button>
     </div>` : ''}
+    ${m.brain ? '<div style="margin-top:4px;font-size:10.5px;color:#64748b">🧠 Ollama brain used</div>' : ''}
   </div>`;
 }
 
@@ -393,12 +592,28 @@ function agentPaint(snap) {
   const stats = app.querySelector('#agentStats');
   if (stats) {
     const s = snap.summary || {};
+    const share = snap.split?.lifetime || {};
     stats.innerHTML = [
       statCard('Pending proofs', s.pendingProofs || 0, 'warn'),
       statCard('USDC pending', usd(s.unpaidUsd), 'danger'),
+      statCard('Aap ka 70%', usd(share.ownerUsd), 'teal'),
+      statCard('Automaton 30%', usd(share.automatonUsd), 'warn'),
       statCard('Payout records', s.pendingPayouts || 0, 'warn'),
       statCard('Trials ending', s.expiring || 0, 'warn'),
     ].join('');
+  }
+  const mode = app.querySelector('#agentPayoutMode');
+  if (mode) {
+    const p = snap.payout || {};
+    const mail = snap.email || {};
+    const parts = [
+      p.configured ? `Auto USDC payout ON — ${p.provider}` : 'Auto USDC payout MANUAL — provider configure nahi (PAYOUT_PROVIDER)',
+      mail.attachments
+        ? `Receipt email attachment ON (${mail.provider})`
+        : 'Receipt email attachment OFF — RESEND_API_KEY set karein',
+    ];
+    mode.textContent = parts.join(' · ');
+    mode.style.color = p.configured && mail.attachments ? '#047857' : '#b45309';
   }
   const pending = app.querySelector('#agentPending');
   if (pending) pending.innerHTML = agentPendingHTML(snap);
@@ -455,6 +670,13 @@ async function renderAgent() {
         <div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:16px;align-items:start">
           <div class="owner-card" style="padding:16px;display:flex;flex-direction:column;min-height:540px">
             <h3 class="owner-section-title">Chat</h3>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:#475569">
+              <span>Brain:</span>
+              <select id="brainModel" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px"></select>
+              <button class="owner-btn sm" id="brainRefresh" type="button">Reload</button>
+              <button class="owner-btn sm" id="brainConfig" type="button">Endpoint</button>
+              <span id="brainStatus">checking…</span>
+            </div>
             <div id="agentChat" style="flex:1;display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:460px;padding:4px">${agentChatHTML()}</div>
             <div id="agentChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
               <button class="owner-btn sm" type="button" data-agent-chip="status">Status</button>
@@ -462,6 +684,7 @@ async function renderAgent() {
               <button class="owner-btn sm" type="button" data-agent-chip="nahi mila">Nahi mila</button>
               <button class="owner-btn sm" type="button" data-agent-chip="wallet">Wallet address</button>
               <button class="owner-btn sm" type="button" data-agent-chip="automaton">Automaton check</button>
+              <button class="owner-btn sm" type="button" data-agent-chip="split">30/70 split</button>
             </div>
             <form id="agentForm" style="display:flex;gap:8px">
               <input id="agentInput" autocomplete="off" placeholder="Haan mila / Nahi mila / wallet / status..." style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px" />
@@ -471,6 +694,7 @@ async function renderAgent() {
           <div>
             <div class="owner-card" style="padding:16px">
               <h3 class="owner-section-title">Pending checks</h3>
+              <div id="agentPayoutMode" class="hint" style="margin-bottom:8px"></div>
               <div id="agentPending"></div>
             </div>
             <div class="owner-card" style="padding:16px;margin-top:14px">
@@ -541,6 +765,34 @@ async function renderAgent() {
     }
   });
 
+  const brainModelSel = app.querySelector('#brainModel');
+  brainModelSel?.addEventListener('change', (e) => {
+    const val = e.target.value;
+    if (!val) {
+      brainSave({ enabled: false });
+      brainState.enabled = false;
+      return;
+    }
+    brainSave({ enabled: true, model: val, endpoint: brainState.endpoint });
+    brainState.enabled = true;
+    brainState.model = val;
+  });
+  app.querySelector('#brainRefresh')?.addEventListener('click', async () => {
+    brainState.checked = false;
+    await brainProbe(true);
+    brainRenderControls();
+  });
+  app.querySelector('#brainConfig')?.addEventListener('click', async () => {
+    const current = brainConfig().endpoint || 'http://localhost:11435';
+    const ep = prompt('Ollama / OpenAI-compatible endpoint:', current);
+    if (ep === null) return;
+    brainSave({ endpoint: String(ep).trim() });
+    brainState.checked = false;
+    await brainProbe(true);
+    brainRenderControls();
+  });
+  brainProbe().then(brainRenderControls);
+
   agentPaint(snap);
   paintAgentChat();
 }
@@ -567,15 +819,53 @@ async function askAgent({ message, action, proofId }) {
     chat.scrollTop = chat.scrollHeight;
   }
 
+  let brainQuestion = false;
+  let brainUsed = false;
+  if (!action && brainState.enabled && brainState.models.length && !brainBusy) {
+    brainBusy = true;
+    try {
+      const parsed = await brainInterpret(message);
+      brainUsed = true;
+      const intentMap = {
+        confirm: 'confirm', deny: 'deny', wallet: 'wallet', automaton: 'automaton',
+        split: 'split', remind: 'remind', reject: 'reject', status: 'status',
+      };
+      if (parsed && intentMap[parsed.intent]) action = intentMap[parsed.intent];
+      if (
+        parsed &&
+        ['confirm', 'deny', 'reject'].includes(parsed.intent) &&
+        Number.isInteger(parsed.proofIndex)
+      ) {
+        proofId = (state.agent?.proofs || [])[parsed.proofIndex]?.id || proofId;
+      }
+      brainQuestion = parsed?.intent === 'question';
+      brainState.error = '';
+    } catch (err) {
+      brainState.error = String(err.message || err);
+    } finally {
+      brainBusy = false;
+    }
+  }
+
   try {
     const res = await api('/api/owner/agent/ask', {
       method: 'POST',
       body: { message, action, proofId },
     });
+    let text = res.reply || '…';
+    if (brainQuestion) {
+      try {
+        const answer = await brainAnswer(message);
+        if (answer && answer.trim()) text += '\n\n— Ollama brain —\n' + answer.trim();
+      } catch {
+        /* factual backend reply hi dikhao */
+      }
+    }
     agentMessages.push({
       role: 'agent',
-      text: res.reply || '…',
+      text,
       wallet: res.walletAddress || '',
+      brain: brainUsed,
     });
     agentPaint(res.snapshot);
   } catch (err) {
@@ -643,7 +933,7 @@ function referralBodyHTML(tab, data) {
         refRow('Referred by', s.referredByCode ? `${esc(s.referredByName || '')} (${esc(s.referredByCode)})` : 'Direct'),
         refRow('Signed up', esc(fmtDateTime(s.createdAt))),
       ].join(''),
-      '<button class="owner-btn primary sm" data-act="approve-shop">Approve + 14-day trial</button><button class="owner-btn danger sm" data-act="reject-shop">Reject</button>'
+      '<button class="owner-btn primary sm" data-act="approve-shop">Approve + 1-day demo trial</button><button class="owner-btn danger sm" data-act="reject-shop">Reject</button>'
     )));
   }
 
@@ -739,6 +1029,7 @@ function referralBodyHTML(tab, data) {
         refRow('Commission', `${esc(a.commissionPct)}%`),
         refRow('Shops', esc(a.shopsCount || 0)),
         refRow('Earned', usd(a.earnedUsd)),
+        refRow('24h target', `${usd(a.todayEarnedUsd || 0)} / ${usd(a.dailyTargetUsd || 130)} (min)${(a.remainingTargetUsd || 0) > 0 ? ` · baaki ${usd(a.remainingTargetUsd)}` : ' · achieved ✅'}`),
         refRow('Requested', usd(a.requestedUsd)),
         refRow('Available', `<b style="color:#0f766e">${usd(a.availableUsd)}</b>`),
         refRow('Wallet', a.walletAddress ? `<span class="mono">${esc(a.walletAddress)}</span>` : '—'),
@@ -898,6 +1189,8 @@ async function renderReferralDashboard() {
           ${statCard('Payment proofs', cards.pendingProofs || 0, 'warn')}
           ${statCard('On trial', cards.onTrial || 0, 'warn')}
           ${statCard('Payment due', cards.paymentDue || 0, 'danger')}
+          ${statCard('Aap ka 70%', usd(cards.ownerShareUsd), 'teal')}
+          ${statCard('Automaton 30%', usd(cards.automatonShareUsd), 'warn')}
           ${statCard('Automaton balance', usd(cards.automatonAvailable), 'teal')}
         </div>
         <div class="owner-toolbar">

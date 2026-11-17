@@ -34,3 +34,5 @@ CREATE INDEX IF NOT EXISTS idx_ref_proofs_shop ON payment_proofs(shop_id, status
 ALTER TABLE payout_requests ADD COLUMN due_at TEXT;
 ALTER TABLE payout_requests ADD COLUMN payment_id TEXT;
 ALTER TABLE payout_requests ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payout_requests ADD COLUMN provider TEXT;
+ALTER TABLE payout_requests ADD COLUMN auto_error TEXT;

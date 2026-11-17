@@ -185,7 +185,7 @@ const SHOP_TYPES = {
 
 const DEFAULT_SHOP_TYPE = 'mart';
 const DEFAULT_PLAN = 'trial';
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 1;
 const PLAN_DAYS = {
   trial: 14,
   monthly: 30,
@@ -760,28 +760,35 @@ function ownerShopRow(row) {
 
 /* ---------- Email ---------- */
 
-async function sendEmailTo(env, to, { subject, text, htmlBody }) {
+async function sendEmailTo(env, to, { subject, text, htmlBody, attachments }) {
   const recipient = String(to || '').trim();
   if (!recipient) return { ok: false, errors: ['recipient missing'] };
   const errors = [];
 
   if (env.RESEND_API_KEY) {
     try {
+      const payload = {
+        from: env.MAIL_FROM || 'mhzaly <onboarding@resend.dev>',
+        to: [recipient],
+        subject,
+        text,
+        html: htmlBody,
+      };
+      if (Array.isArray(attachments) && attachments.length) {
+        payload.attachments = attachments.map((a) => ({
+          filename: String(a.filename || 'attachment'),
+          content: String(a.content || ''),
+        }));
+      }
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${env.RESEND_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          from: env.MAIL_FROM || 'mhzaly <onboarding@resend.dev>',
-          to: [recipient],
-          subject,
-          text,
-          html: htmlBody,
-        }),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) return { ok: true, provider: 'resend' };
+      if (res.ok) return { ok: true, provider: 'resend', attachments: payload.attachments?.length || 0 };
       errors.push(`resend: ${res.status}`);
     } catch (err) {
       errors.push(`resend: ${err.message}`);

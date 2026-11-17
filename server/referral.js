@@ -46,6 +46,7 @@ export function createReferral(deps) {
   } = deps;
 
   const OWNER_PANEL_URL = 'https://mhzaly.pages.dev/owner.html';
+  const API_PUBLIC_URL = 'https://mhzaly-api.mhzaly.workers.dev';
 
   // Payment-proof uploads: Western Union / Meezan / JazzCash receipts.
   const PROOF_CHANNELS = ['western_union', 'meezan', 'jazzcash', 'other'];
@@ -187,8 +188,10 @@ export function createReferral(deps) {
     return env.DB.prepare('SELECT * FROM automatons WHERE id = ?').bind(autoId).first();
   }
 
-  async function automatonFinance(env, autoId) {
-    const [earned, clawed, requested] = await Promise.all([
+  async function automatonFinance(env, autoId, targetUsd) {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const [earned, clawed, requested, today] = await Promise.all([
       env.DB.prepare("SELECT COALESCE(SUM(amount_usd),0) AS v FROM commissions WHERE automaton_id = ? AND status = 'earned'")
         .bind(autoId)
         .first(),
@@ -198,14 +201,23 @@ export function createReferral(deps) {
       env.DB.prepare("SELECT COALESCE(SUM(amount_usd),0) AS v FROM payout_requests WHERE automaton_id = ? AND status IN ('pending','approved','paid')")
         .bind(autoId)
         .first(),
+      env.DB.prepare("SELECT COALESCE(SUM(amount_usd),0) AS v FROM commissions WHERE automaton_id = ? AND status = 'earned' AND created_at >= ?")
+        .bind(autoId, todayStart.toISOString())
+        .first(),
     ]);
     const earnedUsd = round2(earned?.v || 0);
     const requestedUsd = round2(requested?.v || 0);
+    const todayEarnedUsd = round2(today?.v || 0);
+    const tgt = round2(num(targetUsd, 130));
     return {
       earnedUsd,
       clawedBackUsd: round2(clawed?.v || 0),
       requestedUsd,
       availableUsd: round2(earnedUsd - requestedUsd),
+      dailyTargetUsd: tgt,
+      todayEarnedUsd,
+      remainingTargetUsd: round2(Math.max(0, tgt - todayEarnedUsd)),
+      targetProgressPct: Math.min(999, Math.round((todayEarnedUsd / Math.max(1, tgt)) * 100)),
     };
   }
 
@@ -231,7 +243,7 @@ export function createReferral(deps) {
     return Number(res.meta?.changes || 0) > 0;
   }
 
-  async function sendOwnerAlert(env, { subject, intro, rows, buttons, footer }) {
+  async function sendOwnerAlert(env, { subject, intro, rows, buttons, footer, attachments }) {
     const safeRows = rows || [];
     const textLines = [
       intro,
@@ -247,7 +259,7 @@ export function createReferral(deps) {
       buttons || [{ href: OWNER_PANEL_URL, label: 'Open owner panel', bg: '#0f766e' }],
       footer || 'mhzaly owner alert'
     );
-    return sendOwnerEmail(env, { subject, text: textLines.join('\n'), htmlBody });
+    return sendOwnerEmail(env, { subject, text: textLines.join('\n'), htmlBody, attachments });
   }
 
   async function ownerAudit(env, auth, ip, action, targetType, targetId, details) {
@@ -672,9 +684,13 @@ export function createReferral(deps) {
          FROM shops ORDER BY created_at DESC`
       ).all(),
       env.DB.prepare(
-        `SELECT id, name, ref_code, wallet_address, commission_pct, active, created_at
-         FROM automatons ORDER BY created_at DESC`
-      ).all(),
+        `SELECT a.id, a.name, a.ref_code, a.wallet_address, a.commission_pct, a.active, a.created_at,
+                a.daily_target_usd,
+                (SELECT COALESCE(SUM(c.amount_usd), 0) FROM commissions c
+                  WHERE c.automaton_id = a.id AND c.status = 'earned'
+                    AND c.created_at >= ?) AS today_earned_usd
+         FROM automatons a ORDER BY a.created_at DESC`
+      ).bind(new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString()).all(),
       env.DB.prepare(
         `SELECT q.*, s.name AS shop_name, s.code AS shop_code, a.name AS automaton_name
          FROM price_quotes q
@@ -710,7 +726,7 @@ export function createReferral(deps) {
     const autoMap = new Map(autos.map((a) => [a.id, a]));
     const automatons = [];
     for (const a of autos) {
-      const finance = await automatonFinance(env, a.id);
+      const finance = await automatonFinance(env, a.id, a.daily_target_usd);
       const count = await env.DB.prepare('SELECT COUNT(*) AS c FROM shops WHERE referred_by = ?')
         .bind(a.id)
         .first();
@@ -814,6 +830,7 @@ export function createReferral(deps) {
       reviewedAt: p.reviewed_at || null,
     }));
 
+    const split = await splitSummary(env);
     return json({
       cards: {
         pendingApprovals: pendingShops.length,
@@ -821,7 +838,11 @@ export function createReferral(deps) {
         onTrial,
         paymentDue,
         automatonAvailable,
+        ownerShareUsd: split.lifetime.ownerUsd,
+        automatonShareUsd: split.lifetime.automatonUsd,
       },
+      split,
+      payout: payoutProviderInfo(env),
       pendingShops,
       shops,
       quotes,
@@ -1128,7 +1149,12 @@ export function createReferral(deps) {
       amountUsd: num(payout.amount_usd),
       automatonId: payout.automaton_id,
     });
-    return json({ ok: true });
+
+    let autoPayout = null;
+    if (action === 'approve' && payoutProviderInfo(env).configured) {
+      autoPayout = await executeAutoPayout(env, id);
+    }
+    return json({ ok: true, autoPayout });
   }
 
   /* ---------------- payment proofs (Western Union / Meezan / JazzCash) ---------------- */
@@ -1216,6 +1242,12 @@ export function createReferral(deps) {
           ['Phone', shop.phone || '—'],
         ],
         buttons: [{ href: OWNER_PANEL_URL, label: 'Check proof & activate', bg: '#0f766e' }],
+        attachments: [
+          {
+            filename: `receipt-${id}.${img.mime === 'image/png' ? 'png' : img.mime === 'image/webp' ? 'webp' : 'jpg'}`,
+            content: img.data,
+          },
+        ],
       }).catch(() => {});
     }
 
@@ -1332,7 +1364,12 @@ export function createReferral(deps) {
       commissionUsd: result.commissionUsd,
     });
 
-    return json({ ok: true, status: 'approved', ...result });
+    let autoPayout = null;
+    if (result.payoutId && payoutProviderInfo(env).configured) {
+      autoPayout = await executeAutoPayout(env, result.payoutId);
+    }
+
+    return json({ ok: true, status: 'approved', autoPayout, ...result });
   }
 
   /* ---------------- AI agent: payment checker & commission guide ---------------- */
@@ -1343,6 +1380,213 @@ export function createReferral(deps) {
 
   function agentYesIntent(m) {
     return /(haan|\bhan\b|\bha\b|\byes\b|yeah|yep|mila|mil gaya|milgaya|aa gayi|aagayi|agyi|received|confirm|theek hai|sahi hai)/i.test(m);
+  }
+
+  async function splitSummary(env) {
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+
+    const all = await env.DB.prepare(
+      `SELECT COALESCE(SUM((p.gross - p.gateway_fee) * p.usd_rate), 0) AS net_usd,
+              COALESCE(SUM(CASE WHEN c.status = 'earned' THEN c.amount_usd ELSE 0 END), 0) AS commission_usd
+         FROM payments p
+         LEFT JOIN commissions c ON c.payment_id = p.id
+        WHERE p.status = 'succeeded'`
+    ).first();
+
+    const month = await env.DB.prepare(
+      `SELECT COALESCE(SUM((p.gross - p.gateway_fee) * p.usd_rate), 0) AS net_usd,
+              COALESCE(SUM(CASE WHEN c.status = 'earned' THEN c.amount_usd ELSE 0 END), 0) AS commission_usd
+         FROM payments p
+         LEFT JOIN commissions c ON c.payment_id = p.id
+        WHERE p.status = 'succeeded' AND p.received_at >= ?`
+    )
+      .bind(monthStart.toISOString())
+      .first();
+
+    const shape = (row) => {
+      const netUsd = round2(num(row?.net_usd));
+      const automatonUsd = round2(num(row?.commission_usd));
+      return { netUsd, automatonUsd, ownerUsd: round2(netUsd - automatonUsd) };
+    };
+
+    return { lifetime: shape(all), month: shape(month) };
+  }
+
+  function payoutProviderInfo(env) {
+    const provider = lower(env.PAYOUT_PROVIDER || 'manual', 30) || 'manual';
+    let configured = false;
+    if (provider === 'nowpayments') {
+      configured = Boolean(env.NOWPAYMENTS_EMAIL && env.NOWPAYMENTS_PASSWORD);
+    }
+    return { provider, configured, mode: configured ? 'auto' : 'manual' };
+  }
+
+  async function nowPaymentsAuth(env) {
+    const res = await fetch('https://api.nowpayments.io/v1/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: env.NOWPAYMENTS_EMAIL, password: env.NOWPAYMENTS_PASSWORD }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.token) {
+      throw new Error(data.message || `NOWPayments auth failed (${res.status})`);
+    }
+    return data.token;
+  }
+
+  async function executeAutoPayout(env, payoutId) {
+    const info = payoutProviderInfo(env);
+    if (info.provider === 'manual') {
+      return { ok: false, skipped: true, message: 'Auto payout provider configure nahi hai (PAYOUT_PROVIDER=manual)' };
+    }
+    if (!info.configured) {
+      return { ok: false, skipped: true, message: `${info.provider} credentials missing` };
+    }
+
+    const row = await env.DB.prepare(
+      `SELECT p.*, a.wallet_address, a.name AS automaton_name
+         FROM payout_requests p
+         LEFT JOIN automatons a ON a.id = p.automaton_id
+        WHERE p.id = ?`
+    )
+      .bind(payoutId)
+      .first();
+    if (!row) return { ok: false, message: 'Payout not found' };
+    if (row.status === 'paid') return { ok: true, already: true, txHash: row.tx_hash || '' };
+    if (row.status !== 'approved' && row.status !== 'pending') {
+      return { ok: false, message: 'Payout approved nahi hai' };
+    }
+    if (!row.wallet_address) {
+      await env.DB.prepare('UPDATE payout_requests SET auto_error = ? WHERE id = ?')
+        .bind('automaton wallet missing', payoutId)
+        .run();
+      return { ok: false, message: 'Automaton ka USDC wallet address set nahi hai' };
+    }
+
+    try {
+      const token = await nowPaymentsAuth(env);
+      const currency = lower(env.NOWPAYMENTS_USDC_CURRENCY || 'usdcpolygon', 20) || 'usdcpolygon';
+      const res = await fetch('https://api.nowpayments.io/v1/payout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ipn_callback_url: `${API_PUBLIC_URL}/api/webhooks/nowpayments`,
+          withdrawals: [
+            {
+              address: row.wallet_address,
+              currency,
+              amount: round2(num(row.amount_usd)),
+              ipn_callback_url: `${API_PUBLIC_URL}/api/webhooks/nowpayments`,
+            },
+          ],
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `NOWPayments payout failed (${res.status})`);
+
+      const txHash = `${info.provider}:${data.id || 'submitted'}`;
+      await env.DB.prepare(
+        `UPDATE payout_requests
+            SET provider = ?, tx_hash = ?, auto_error = NULL, decided_at = ?, decided_by = ?
+          WHERE id = ?`
+      )
+        .bind(info.provider, txHash, nowIso(), 'auto', payoutId)
+        .run();
+
+      return {
+        ok: true,
+        provider: info.provider,
+        txHash,
+        status: data.status || 'submitted',
+        currency,
+      };
+    } catch (err) {
+      await env.DB.prepare('UPDATE payout_requests SET auto_error = ? WHERE id = ?')
+        .bind(String(err.message || err).slice(0, 200), payoutId)
+        .run();
+      return { ok: false, message: String(err.message || err) };
+    }
+  }
+
+  async function runAutoPayouts(env) {
+    const info = payoutProviderInfo(env);
+    if (!info.configured) return { attempted: 0, sent: 0 };
+    const rows = await env.DB.prepare(
+      `SELECT id FROM payout_requests
+        WHERE auto = 1 AND status IN ('approved', 'pending') AND provider IS NULL
+        ORDER BY created_at ASC LIMIT 20`
+    ).all();
+    let sent = 0;
+    for (const row of rows.results || []) {
+      const res = await executeAutoPayout(env, row.id);
+      if (res.ok) sent += 1;
+    }
+    return { attempted: (rows.results || []).length, sent };
+  }
+
+  function sortJson(value) {
+    if (Array.isArray(value)) return value.map(sortJson);
+    if (value && typeof value === 'object') {
+      return Object.keys(value)
+        .sort()
+        .reduce((acc, key) => {
+          acc[key] = sortJson(value[key]);
+          return acc;
+        }, {});
+    }
+    return value;
+  }
+
+  async function handleNowPaymentsWebhook(request, env) {
+    const secret = env.NOWPAYMENTS_IPN_SECRET;
+    if (!secret) throw new HttpError(503, 'NOWPAYMENTS_IPN_SECRET configure nahi hai');
+    const raw = await request.text();
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      throw new HttpError(400, 'Invalid JSON');
+    }
+
+    const signature = request.headers.get('x-nowpayments-sig') || '';
+    const bodyForSig = JSON.stringify(sortJson(payload));
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-512' },
+      false,
+      ['sign']
+    );
+    const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(bodyForSig));
+    const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (!safeEqual(expected, signature)) throw new HttpError(401, 'Invalid signature');
+
+    const providerId = String(payload.id || payload.payout_id || '');
+    if (providerId) {
+      const txHash = `nowpayments:${providerId}`;
+      const row = await env.DB.prepare('SELECT id, amount_usd FROM payout_requests WHERE tx_hash = ?').bind(txHash).first();
+      if (row) {
+        const status = lower(payload.status || payload.payment_status || '', 30);
+        if (['finished', 'confirmed', 'paid', 'success', 'sending'].includes(status)) {
+          await env.DB.prepare(
+            "UPDATE payout_requests SET status = 'paid', auto_error = NULL, decided_at = ? WHERE id = ?"
+          )
+            .bind(nowIso(), row.id)
+            .run();
+        } else if (['failed', 'rejected', 'cancelled', 'expired'].includes(status)) {
+          await env.DB.prepare('UPDATE payout_requests SET auto_error = ? WHERE id = ?')
+            .bind(`nowpayments: ${status}`, row.id)
+            .run();
+        }
+      }
+    }
+
+    return json({ ok: true });
   }
 
   async function agentSnapshot(env) {
@@ -1381,16 +1625,20 @@ export function createReferral(deps) {
       .bind(soon)
       .all();
 
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
     const automatonRes = await env.DB.prepare(
-      `SELECT a.id, a.name, a.ref_code, a.active, a.wallet_address, a.commission_pct,
+      `SELECT a.id, a.name, a.ref_code, a.active, a.wallet_address, a.commission_pct, a.daily_target_usd,
               (SELECT COUNT(*) FROM shops s WHERE s.referred_by = a.id) AS shops,
               (SELECT COUNT(*) FROM shops s WHERE s.referred_by = a.id AND s.status = 'active') AS active_shops,
               (SELECT COALESCE(SUM(c.amount_usd), 0) FROM commissions c
                 WHERE c.automaton_id = a.id AND c.status = 'earned') AS earned_usd,
+              (SELECT COALESCE(SUM(c.amount_usd), 0) FROM commissions c
+                WHERE c.automaton_id = a.id AND c.status = 'earned' AND c.created_at >= ?) AS today_earned_usd,
               (SELECT MAX(c.created_at) FROM commissions c WHERE c.automaton_id = a.id) AS last_commission
          FROM automatons a
         ORDER BY a.created_at DESC LIMIT 50`
-    ).all();
+    ).bind(todayStart.toISOString()).all();
 
     const proofs = (proofRes.results || []).map((p) => {
       const rate = usdRateFor(env, p.currency);
@@ -1455,14 +1703,24 @@ export function createReferral(deps) {
       active: Number(a.active) === 1,
       walletAddress: a.wallet_address || '',
       commissionPct: num(a.commission_pct, 30),
+      dailyTargetUsd: round2(num(a.daily_target_usd, 130)),
+      todayEarnedUsd: round2(num(a.today_earned_usd)),
       shops: Number(a.shops || 0),
       activeShops: Number(a.active_shops || 0),
       earnedUsd: round2(num(a.earned_usd)),
+      remainingTargetUsd: round2(Math.max(0, num(a.daily_target_usd, 130) - num(a.today_earned_usd))),
+      targetProgressPct: Math.min(999, Math.round((num(a.today_earned_usd) / Math.max(1, num(a.daily_target_usd, 130))) * 100)),
       lastCommissionAt: a.last_commission || null,
     }));
 
     return {
       generatedAt: nowIso(),
+      split: await splitSummary(env),
+      payout: payoutProviderInfo(env),
+      email: {
+        provider: env.RESEND_API_KEY ? 'resend' : 'flowform',
+        attachments: Boolean(env.RESEND_API_KEY),
+      },
       summary: {
         pendingProofs: proofs.length,
         pendingPayouts: payouts.length,
@@ -1524,6 +1782,11 @@ export function createReferral(deps) {
           `earned US$ ${a.earnedUsd.toFixed(2)}, wallet ${a.walletAddress || 'set nahi'}`
       );
       if (issues.length) lines.push(`   → fix: ${issues.join(', ')}`);
+      const target = a.dailyTargetUsd || 130;
+      lines.push(
+        `   → 24h target: US$ ${a.todayEarnedUsd.toFixed(2)} / US$ ${target.toFixed(2)} (min) — max unlimited` +
+          (a.remainingTargetUsd > 0 ? ` · baaki US$ ${a.remainingTargetUsd.toFixed(2)}` : ' · target achieved ✅')
+      );
     }
     const broken = list.filter((a) => !a.active || !a.walletAddress || !a.shops).length;
     lines.push('');
@@ -1532,6 +1795,25 @@ export function createReferral(deps) {
         ? `${broken} automaton(s) mein issue hai — upar fix list dekhein.`
         : 'Sab automatons theek kaam kar rahe hain ✅'
     );
+    return lines.join('\n');
+  }
+
+  function agentSplitReply(snap) {
+    const life = snap.split?.lifetime || { netUsd: 0, automatonUsd: 0, ownerUsd: 0 };
+    const month = snap.split?.month || life;
+    const payout = snap.payout || { provider: 'manual', configured: false, mode: 'manual' };
+    const lines = [
+      '*30% / 70% split (real ledger):*',
+      `• Total net received: US$ ${life.netUsd.toFixed(2)}`,
+      `• Automaton 30% share: US$ ${life.automatonUsd.toFixed(2)}`,
+      `• Aap ka 70% share: US$ ${life.ownerUsd.toFixed(2)}`,
+      '',
+      `Is mahine: net US$ ${month.netUsd.toFixed(2)} · automaton US$ ${month.automatonUsd.toFixed(2)} · aap ke US$ ${month.ownerUsd.toFixed(2)}`,
+      '',
+      payout.configured
+        ? `Auto USDC payout ON hai (${payout.provider}). Payment confirm hote hi 30% wallet par bhejne ki koshish hoti hai.`
+        : 'Auto USDC payout abhi MANUAL hai — provider configure nahi (PAYOUT_PROVIDER). Payment confirm par agent wallet address deta hai, aap USDC bhej kar "Mark paid" karein.',
+    ];
     return lines.join('\n');
   }
 
@@ -1562,6 +1844,13 @@ export function createReferral(deps) {
       lines.push('');
       lines.push(`*Trial khatam ho raha hai (${snap.expiring.length}):*`);
       snap.expiring.slice(0, 5).forEach((s) => lines.push(`• ${s.name} — ${s.endsAt}`));
+    }
+    const share = snap.split?.lifetime;
+    if (share) {
+      lines.push('');
+      lines.push(
+        `*Split:* aap ka 70% US$ ${Number(share.ownerUsd || 0).toFixed(2)} · automaton 30% US$ ${Number(share.automatonUsd || 0).toFixed(2)}`
+      );
     }
     return lines.join('\n');
   }
@@ -1671,8 +1960,12 @@ export function createReferral(deps) {
       return json({ ok: true, kind: 'wallets', reply: agentWalletReply(snap), snapshot: snap });
     }
 
-    if (action === 'automaton' || /(automaton|agent.*kaam|kaam kar)/i.test(message)) {
+    if (action === 'automaton' || /(automaton.*(kaam|health|check|status|active|issue)|kaam kar)/i.test(message)) {
       return json({ ok: true, kind: 'automaton', reply: agentAutomatonReply(snap), snapshot: snap });
+    }
+
+    if (action === 'split' || /(split|share|hisab|\b70\b|\b30\b|commission)/i.test(message)) {
+      return json({ ok: true, kind: 'split', reply: agentSplitReply(snap), snapshot: snap });
     }
 
     if (action === 'reject') {
@@ -1730,6 +2023,10 @@ export function createReferral(deps) {
 
       const result = await agentApproveProof(env, auth, ip, proof);
       const wallet = result.commission?.automatonWallet || proof.walletAddress || '';
+      let autoPayout = null;
+      if (result.payoutId && payoutProviderInfo(env).configured) {
+        autoPayout = await executeAutoPayout(env, result.payoutId);
+      }
       const lines = [];
 
       if (result.duplicate) {
@@ -1747,7 +2044,15 @@ export function createReferral(deps) {
           lines.push(`• USDC wallet: ${wallet || 'wallet set nahi hai — Automatons tab mein add karein'}`);
           if (result.payoutDueAt) lines.push(`• Due: ${result.payoutDueAt}`);
           lines.push('');
-          lines.push('Payout record ban gaya hai — USDC bhejne ke baad Payouts tab se "Mark paid" karein.');
+          if (autoPayout?.ok) {
+            lines.push(`✅ Auto USDC payout submit ho gaya (${autoPayout.provider}) — tx: ${autoPayout.txHash}`);
+            lines.push('Provider confirmation aate hi payout "paid" mark ho jayega.');
+          } else if (autoPayout && !autoPayout.ok) {
+            lines.push(`⚠️ Auto payout nahi hua: ${autoPayout.message || 'unknown error'}`);
+            lines.push('Upar diye wallet par manually USDC bhej kar Payouts tab se "Mark paid" karein.');
+          } else {
+            lines.push('Payout record ban gaya hai — USDC bhejne ke baad Payouts tab se "Mark paid" karein.');
+          }
         } else {
           lines.push('Ye direct shop thi — koi automaton commission nahi.');
         }
@@ -1764,6 +2069,7 @@ export function createReferral(deps) {
         walletAddress: wallet,
         payoutId: result.payoutId || null,
         payoutDueAt: result.payoutDueAt || null,
+        autoPayout,
         snapshot: snap,
       });
     }
@@ -1989,7 +2295,7 @@ export function createReferral(deps) {
   async function runScheduled(env) {
     const now = new Date();
     const nowStr = now.toISOString();
-    const result = { moved: 0, emailed: 0, payoutReminders: 0, proofReminders: 0, agentEmails: 0 };
+    const result = { moved: 0, emailed: 0, payoutReminders: 0, proofReminders: 0, agentEmails: 0, autoPayouts: 0 };
 
     /* 1) trial / subscription expiry → payment_due */
     const candidates = await env.DB.prepare(
@@ -2117,7 +2423,15 @@ export function createReferral(deps) {
       /* reminders must never break the cron */
     }
 
-    /* 4) AI agent — daily payment check email to owner */
+    /* 4) Auto USDC payouts (only when a real provider is configured) */
+    try {
+      const auto = await runAutoPayouts(env);
+      result.autoPayouts = auto.sent;
+    } catch {
+      /* provider errors must never break the cron */
+    }
+
+    /* 5) AI agent — daily payment check email to owner */
     try {
       const snap = await agentSnapshot(env);
       const sent = await sendAgentDigest(env, snap);
@@ -2138,6 +2452,9 @@ export function createReferral(deps) {
 
     if (path === '/api/webhooks/stripe' && method === 'POST') {
       return handleStripeWebhook(request, env);
+    }
+    if (path === '/api/webhooks/nowpayments' && method === 'POST') {
+      return handleNowPaymentsWebhook(request, env);
     }
 
     if (path === '/api/owner/referral/overview' && method === 'GET') {
