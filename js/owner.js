@@ -685,6 +685,7 @@ async function renderAgent() {
               <button class="owner-btn sm" type="button" data-agent-chip="wallet">Wallet address</button>
               <button class="owner-btn sm" type="button" data-agent-chip="automaton">Automaton check</button>
               <button class="owner-btn sm" type="button" data-agent-chip="split">30/70 split</button>
+              <button class="owner-btn sm" type="button" data-agent-chip="plan strategy">Plan strategy</button>
             </div>
             <form id="agentForm" style="display:flex;gap:8px">
               <input id="agentInput" autocomplete="off" placeholder="Haan mila / Nahi mila / wallet / status..." style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px" />

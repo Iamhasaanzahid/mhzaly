@@ -1795,6 +1795,12 @@ export function createReferral(deps) {
         ? `${broken} automaton(s) mein issue hai — upar fix list dekhein.`
         : 'Sab automatons theek kaam kar rahe hain ✅'
     );
+    lines.push('');
+    lines.push('*Plan strategy (automaton ko follow karna hai):*');
+    lines.push('• Customer ko monthly/quarterly/annual plan lena zaroori hai — lifetime sirf major countries (US etc.) mein $2000 USD');
+    lines.push('• Pakistan aur other countries mein lifetime nahi — monthly/quarterly/annual push karo');
+    lines.push('• Zyada paisa ke liye annual ya lifetime ($2000) push karo — automaton khud decide kare max earnings ke liye');
+    lines.push('• Target: $130/24h min, max unlimited');
     return lines.join('\n');
   }
 
@@ -1852,6 +1858,8 @@ export function createReferral(deps) {
         `*Split:* aap ka 70% US$ ${Number(share.ownerUsd || 0).toFixed(2)} · automaton 30% US$ ${Number(share.automatonUsd || 0).toFixed(2)}`
       );
     }
+    lines.push('');
+    lines.push('*Plan strategy:* lifetime sirf major countries (US etc.) mein $2000 USD; Pakistan mein monthly/quarterly/annual. Zyada paisa ke liye annual/lifetime push karo.' );
     return lines.join('\n');
   }
 
