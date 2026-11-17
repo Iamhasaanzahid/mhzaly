@@ -84,6 +84,12 @@ export function saveData(data) {
 export function changePassword(currentPassword, newPassword) {
   return request('/api/password', { method: 'POST', body: { currentPassword, newPassword } });
 }
+export function submitPaymentProof(payload) {
+  return request('/api/shop/payment-proof', { method: 'POST', body: payload });
+}
+export function listPaymentProofs() {
+  return request('/api/shop/payment-proofs');
+}
 export async function ownerAction(path, body) {
   return request(path, { method: 'POST', body });
 }

@@ -6,3 +6,6 @@ compatibility_date = "2026-11-07"
 binding = "DB"
 database_name = "mhzaly"
 database_id = "06c91f98-c054-460a-9278-53d12bc1aaf3"
+
+[triggers]
+crons = ["0 * * * *"]

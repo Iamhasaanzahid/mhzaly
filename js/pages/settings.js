@@ -13,6 +13,7 @@ import {
   COUNTRIES, CURRENCIES, countryOptions, currencyOptions,
   applyCountry, applyCurrency, applyLanguageCountry, formatMoney, formatDate, countryProfile,
 } from '../currency.js';
+import { openProofModal } from './billing.js';
 
 export const meta = { title: 'Settings', subtitle: 'Shop details, backup and preferences' };
 
@@ -138,7 +139,10 @@ export function render(root) {
               <div><b>Status:</b> ${esc(db.settings._billingStatus || '—')}</div>
               <div><b>Days Left:</b> ${esc(db.settings._daysLeft == null ? 'Lifetime' : db.settings._daysLeft + ' din')}</div>
             </div>
-            <div class="form-actions"><button class="btn btn-primary" type="submit">${icon('check')} Save shop details</button></div>
+            <div class="form-actions">
+              <button class="btn btn-ghost" type="button" id="sendProofBtn">${icon('upload')} Payment proof bhejein</button>
+              <button class="btn btn-primary" type="submit">${icon('check')} Save shop details</button>
+            </div>
           </form>
         </div>
       </div>
@@ -423,6 +427,10 @@ export function render(root) {
     logoData = '';
     updateLogoPreview();
     toast('Logo remove hoga — Save shop details dabayein');
+  });
+
+  root.querySelector('#sendProofBtn')?.addEventListener('click', () => {
+    openProofModal();
   });
 
   root.querySelectorAll('[data-theme-choice]').forEach((btn) => {

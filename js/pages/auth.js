@@ -227,6 +227,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     const shopNameVal = String(fd.get('shopName') || '').trim();
     const phoneVal = String(fd.get('phone') || '').trim();
     const password = String(fd.get('password') || '');
+    const refCode = String(fd.get('ref') || '').trim().toLowerCase() || '';
     const phoneDigits = phoneVal.replace(/[^\d]/g, '');
 
     if (shopNameVal.length < 2) return showError('Shop ka naam likhein');
@@ -237,7 +238,7 @@ export function render(root, { mode = 'login', shopCode = '' } = {}) {
     registerBtn.disabled = true;
     registerBtn.textContent = 'Request bhej rahe hain…';
     try {
-      const res = await register({ shopType: shopTypeVal, shopName: shopNameVal, phone: phoneVal, password });
+      const res = await register({ shopType: shopTypeVal, shopName: shopNameVal, phone: phoneVal, password: password, ref: refCode });
       showPending(res);
     } catch (err) {
       showError(err.message || 'Account request nahi bhej saki');

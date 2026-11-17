@@ -49,7 +49,6 @@ const FILES = [
   'sitemap.xml',
   '_headers',
   '_redirects',
-  'functions',
 ];
 
 const DIRS = ['css', 'js', 'functions'];

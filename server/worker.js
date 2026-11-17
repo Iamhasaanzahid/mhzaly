@@ -3,6 +3,8 @@
    Multi-shop SaaS with subscriptions, security, audit log
    ============================================================ */
 
+import { createReferral } from './referral.js';
+
 const PBKDF2_ITERATIONS = 60000;
 const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
 const MAX_DATA_BYTES = 2 * 1024 * 1024;
@@ -219,28 +221,57 @@ function daysLeft(end) {
 }
 
 function billingAccess(shop) {
-  if (shop.status !== 'active') {
+  if (shop.status === 'pending') {
     return {
       ok: false,
       code: 'pending',
+      httpStatus: 403,
       message: 'Aap ka account abhi approve nahi hua. Owner ke email par approval request bheji gayi hai.',
     };
   }
-  if (shop.billing_status === 'blocked') {
+  if (shop.status === 'rejected') {
+    return {
+      ok: false,
+      code: 'rejected',
+      httpStatus: 403,
+      message: 'Aap ki shop request reject ho gayi hai. Dobara account banane ke liye signup karein.',
+    };
+  }
+  if (shop.status !== 'active') {
+    return {
+      ok: false,
+      code: 'inactive',
+      httpStatus: 403,
+      message: 'Aap ka account active nahi hai — mhzaly owner se rabta karein.',
+    };
+  }
+  if (shop.blocked_at || shop.billing_status === 'blocked') {
     return {
       ok: false,
       code: 'blocked',
+      httpStatus: 403,
       message: 'Aap ka account temporarily band hai — mhzaly owner se rabta karein.',
     };
   }
   const plan = shop.plan || DEFAULT_PLAN;
   if (plan === 'lifetime') return { ok: true };
+
+  const billing = shop.billing_status || 'trial';
+  if (billing === 'payment_due' || billing === 'expired') {
+    return {
+      ok: false,
+      code: 'payment_due',
+      httpStatus: 402,
+      message: 'Aap ka trial ya subscription khatam ho gaya hai. Payment karein — owner payment ke baad account active kar dega.',
+    };
+  }
   if (!shop.subscription_end) return { ok: true };
   if (new Date(shop.subscription_end).getTime() < Date.now()) {
     return {
       ok: false,
-      code: 'expired',
-      message: 'Aap ka trial ya subscription khatam ho gaya hai — owner se renew karwayein.',
+      code: 'payment_due',
+      httpStatus: 402,
+      message: 'Aap ka trial ya subscription khatam ho gaya hai. Payment karein — owner payment ke baad account active kar dega.',
     };
   }
   return { ok: true };
@@ -264,7 +295,7 @@ function corsHeaders(request) {
   const headers = {
     Vary: 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key',
     'Access-Control-Max-Age': '86400',
     ...SECURE_HEADERS,
   };
@@ -703,6 +734,7 @@ function ownerShopRow(row) {
   ) {
     billingStatus = 'expired';
   }
+  if (billingStatus === 'payment_due') billingStatus = 'expired';
   return {
     id: row.id,
     name: row.name,
@@ -728,8 +760,9 @@ function ownerShopRow(row) {
 
 /* ---------- Email ---------- */
 
-async function sendOwnerEmail(env, { subject, text, htmlBody }) {
-  const owner = env.OWNER_EMAIL || OWNER_EMAIL_DEFAULT;
+async function sendEmailTo(env, to, { subject, text, htmlBody }) {
+  const recipient = String(to || '').trim();
+  if (!recipient) return { ok: false, errors: ['recipient missing'] };
   const errors = [];
 
   if (env.RESEND_API_KEY) {
@@ -742,7 +775,7 @@ async function sendOwnerEmail(env, { subject, text, htmlBody }) {
         },
         body: JSON.stringify({
           from: env.MAIL_FROM || 'mhzaly <onboarding@resend.dev>',
-          to: [owner],
+          to: [recipient],
           subject,
           text,
           html: htmlBody,
@@ -755,7 +788,18 @@ async function sendOwnerEmail(env, { subject, text, htmlBody }) {
     }
   }
 
-  // FlowForm fallback — free no-signup email relay
+  // FlowForm fallback only targets the configured mailbox; arbitrary
+  // customer addresses need Resend. We still return a clear error so the
+  // agent can report it instead of silently dropping the mail.
+  return { ok: false, errors };
+}
+
+async function sendOwnerEmail(env, payload) {
+  const owner = env.OWNER_EMAIL || OWNER_EMAIL_DEFAULT;
+  const result = await sendEmailTo(env, owner, payload);
+  if (result.ok) return result;
+
+  const errors = result.errors || [];
   try {
     const flowUrl = `https://flowform.to/${encodeURIComponent(owner)}`;
     const res = await fetch(flowUrl, {
@@ -763,9 +807,9 @@ async function sendOwnerEmail(env, { subject, text, htmlBody }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to: owner,
-        subject,
-        text,
-        html: htmlBody,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.htmlBody,
       }),
     });
     if (res.ok) return { ok: true, provider: 'flowform' };
@@ -839,6 +883,9 @@ async function handleRegister(request, env) {
   const password = String(body.password || '');
   const givenEmail = String(body.email || '').trim().toLowerCase();
   const shopType = String(body.shopType || DEFAULT_SHOP_TYPE).trim().toLowerCase();
+  const refCode = String(body.ref || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '').slice(0, 32);
+  const countryRaw = String(body.country || request.headers.get('CF-IPCountry') || 'PK').trim().toUpperCase();
+  const country = /^[A-Z]{2}$/.test(countryRaw) ? countryRaw : 'PK';
 
   // Password strength check
   const strength = validatePasswordStrength(password);
@@ -908,6 +955,15 @@ async function handleRegister(request, env) {
   }
 
   const email = givenEmail || `${code}@phone.mhzaly`;
+  let referredBy = null;
+  if (refCode) {
+    const automaton = await env.DB.prepare(
+      'SELECT id FROM automatons WHERE ref_code = ? AND active = 1'
+    )
+      .bind(refCode)
+      .first();
+    if (automaton) referredBy = automaton.id;
+  }
   const shopId = randomId('shop');
   const userId = randomId('user');
   const now = new Date().toISOString();
@@ -919,9 +975,10 @@ async function handleRegister(request, env) {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO shops (id, name, code, email, phone, shop_type, plan, billing_status,
-                          subscription_start, subscription_end, status, confirm_token, confirm_expires, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'trial', 'trial', NULL, NULL, 'pending', ?, ?, ?)`
-    ).bind(shopId, shopName, code, email, phone, shopType, token, expires, now),
+                          subscription_start, subscription_end, status, confirm_token, confirm_expires,
+                          referred_by, country, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'trial', 'trial', NULL, NULL, 'pending', ?, ?, ?, ?, ?)`
+    ).bind(shopId, shopName, code, email, phone, shopType, token, expires, referredBy, country, now),
     env.DB.prepare(
       'INSERT INTO users (id, shop_id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).bind(userId, shopId, email, ownerName, 'owner', passwordHash, now),
@@ -932,7 +989,7 @@ async function handleRegister(request, env) {
   await logAudit(env, {
     actorType: 'system', actorId: shopId, action: 'register',
     targetType: 'shop', targetId: shopId,
-    details: JSON.stringify({ shopName, phone, shopType, email }),
+    details: JSON.stringify({ shopName, phone, shopType, email, country, refCode, referredBy }),
     ip,
   });
 
@@ -947,6 +1004,8 @@ async function handleRegister(request, env) {
     `Category: ${shopTypeInfo(shopType).label}`,
     `Phone: ${phone}`,
     `Code: ${code}`,
+    `Country: ${country}`,
+    `Referred by: ${referredBy ? refCode : 'direct'}`,
     `Time: ${now}`,
     '',
     `Approve: ${approveUrl}`,
@@ -960,6 +1019,8 @@ async function handleRegister(request, env) {
       ['Category', shopTypeInfo(shopType).label],
       ['Phone number', phone],
       ['Shop code', code],
+      ['Country', country],
+      ['Referred by', referredBy ? refCode : 'direct'],
       ['Request time', now],
     ],
     [
@@ -970,6 +1031,8 @@ async function handleRegister(request, env) {
   );
 
   const mail = await sendOwnerEmail(env, { subject, text, htmlBody });
+
+  await referral.recordEmailLog(env, { shopId, kind: 'signup', refId: '' });
 
   await recordLoginAttempt(env, ip, endpoint, true);
 
@@ -1051,12 +1114,13 @@ async function handleConfirm(request, env) {
   const ip = getClientIp(request);
 
   if (action === 'reject') {
-    await env.DB.batch([
-      env.DB.prepare('DELETE FROM subscription_payments WHERE shop_id = ?').bind(shop.id),
-      env.DB.prepare('DELETE FROM shop_data WHERE shop_id = ?').bind(shop.id),
-      env.DB.prepare('DELETE FROM users WHERE shop_id = ?').bind(shop.id),
-      env.DB.prepare('DELETE FROM shops WHERE id = ?').bind(shop.id),
-    ]);
+    await env.DB.prepare(
+      `UPDATE shops SET status = 'rejected', billing_status = 'rejected',
+         confirm_token = NULL, confirm_expires = NULL
+       WHERE id = ?`
+    )
+      .bind(shop.id)
+      .run();
     await logAudit(env, {
       actorType: 'owner', actorId: 'confirm-link', action: 'reject',
       targetType: 'shop', targetId: shop.id,
@@ -1078,9 +1142,9 @@ async function handleConfirm(request, env) {
   await env.DB.prepare(
     `UPDATE shops SET status = 'active', confirm_token = NULL, confirm_expires = NULL, approved_at = ?,
        plan = COALESCE(plan, 'trial'),
-       billing_status = COALESCE(billing_status, 'trial'),
-       subscription_start = COALESCE(subscription_start, ?),
-       subscription_end = COALESCE(subscription_end, ?)
+       billing_status = 'trial',
+       subscription_start = ?, subscription_end = ?,
+       blocked_at = NULL, block_reason = NULL
      WHERE id = ?`
   )
     .bind(nowIso, nowIso, trialEnd, shop.id)
@@ -1209,8 +1273,9 @@ async function handleOwnerOverview(request, env) {
   const nowIso = now.toISOString();
 
   await env.DB.prepare(
-    `UPDATE shops SET billing_status = 'expired'
+    `UPDATE shops SET billing_status = 'payment_due'
      WHERE status = 'active' AND billing_status IN ('trial', 'active')
+       AND blocked_at IS NULL
        AND subscription_end IS NOT NULL AND subscription_end < ?`
   )
     .bind(nowIso)
@@ -1505,14 +1570,9 @@ async function handleLogin(request, env) {
     billing_status: row.billing_status,
     plan: row.plan,
     subscription_end: row.subscription_end,
+    blocked_at: row.blocked_at,
   });
-  if (!access.ok) {
-    if (access.code === 'expired') {
-      await env.DB.prepare("UPDATE shops SET billing_status = 'expired' WHERE id = ?")
-        .bind(row.sid)
-        .run()
-        .catch(() => {});
-    }
+  if (!access.ok && access.code !== 'payment_due') {
     await recordLoginAttempt(env, ip, endpoint, false);
     throw new HttpError(403, access.message);
   }
@@ -1697,9 +1757,28 @@ async function handleHealth(env) {
     service: 'mhzaly-api',
     version: '2.0.0',
     time: new Date().toISOString(),
-    features: ['rate_limit', 'lockout', 'audit_log', 'subscriptions', 'security_headers'],
+    features: ['rate_limit', 'lockout', 'audit_log', 'subscriptions', 'security_headers', 'referrals', 'payment_proofs', 'ai_agent'],
   });
 }
+const referral = createReferral({
+  json,
+  readJson,
+  getClientIp,
+  requireOwner,
+  requireAuth,
+  logAudit,
+  randomId,
+  addDays,
+  sendOwnerEmail,
+  sendEmailTo,
+  defaultOwnerEmail: OWNER_EMAIL_DEFAULT,
+  emailLayout,
+  escHtml,
+  HttpError,
+  safeEqual,
+  checkRateLimit,
+  TRIAL_DAYS,
+});
 
 /* ---------- entry ---------- */
 
@@ -1746,7 +1825,8 @@ export default {
       } else if (path === '/api/account' && request.method === 'DELETE') {
         response = await handleAccountDelete(request, env);
       } else {
-        response = json({ error: 'Not found' }, 404);
+        const referralResponse = await referral.handleReferralRoute(request, env);
+        response = referralResponse || json({ error: 'Not found' }, 404);
       }
 
       for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
@@ -1755,5 +1835,8 @@ export default {
       if (err instanceof HttpError) return json({ error: err.message }, err.status, cors);
       return json({ error: 'Internal server error' }, 500, cors);
     }
+  },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(referral.runScheduled(env));
   },
 };

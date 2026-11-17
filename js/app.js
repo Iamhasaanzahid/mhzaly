@@ -29,6 +29,7 @@ import * as returns from './pages/returns.js';
 import * as restock from './pages/restock.js';
 import * as dayclose from './pages/dayclose.js';
 import * as leaks from './pages/leaks.js';
+import * as billing from './pages/billing.js';
 
 const PAGES = {
   dashboard, assistant, login: authPage, pos, products, sales, purchases, customers, suppliers, expenses, reports, settings, returns, restock, dayclose, leaks,
@@ -316,6 +317,14 @@ export function init() {
         navigate('#/dashboard');
       }).catch((err) => {
         console.error('bootstrap failed', err);
+        if (err && (err.status === 402 || err.status === 403)) {
+          document.title = 'mhzaly — Plan activate karein';
+          billing.renderLock(document.getElementById('app'), {
+            shop: getStoredShop(),
+            message: err.message,
+          });
+          return;
+        }
         clearSession();
         location.href = './';
       });

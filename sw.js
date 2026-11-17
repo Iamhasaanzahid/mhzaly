@@ -60,6 +60,7 @@ const ASSETS = [
   './js/pages/restock.js',
   './js/pages/dayclose.js',
   './js/pages/leaks.js',
+  './js/pages/billing.js',
 ];
 
 self.addEventListener('install', (event) => {
