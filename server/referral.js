@@ -655,8 +655,9 @@ export function createReferral(deps) {
   /* ---------------- automaton authentication ---------------- */
 
   async function authAutomaton(request, env) {
-    const key = text(request.headers.get('X-Api-Key'), 200);
-    if (!key) throw new HttpError(401, 'X-Api-Key header required');
+    const bearer = String(request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    const key = text(request.headers.get('X-Api-Key'), 200) || text(bearer, 200);
+    if (!key) throw new HttpError(401, 'X-Api-Key or Bearer token required');
     const hash = await sha256Hex(key);
     const row = await env.DB.prepare(
       'SELECT * FROM automatons WHERE api_key_hash = ? AND active = 1'
@@ -2145,10 +2146,10 @@ export function createReferral(deps) {
     }
     const maxTokens = Math.max(32, Math.min(320, num(body.maxTokens, 180)));
     const models = [
-      '@cf/meta/llama-3.2-3b-instruct',
       '@cf/meta/llama-3.1-8b-instruct-fast',
       '@cf/meta/llama-3.1-8b-instruct',
       '@cf/meta/llama-3-8b-instruct',
+      '@cf/meta/llama-3.2-3b-instruct',
     ];
     let out = null;
     let used = '';
@@ -2179,6 +2180,147 @@ export function createReferral(deps) {
       ok: true,
       text: String(out?.response || '').trim(),
       model: used,
+      automaton: auto.name,
+    });
+  }
+
+  async function handleAutomatonCredits(request, env) {
+    const auto = await authAutomaton(request, env);
+    // Free-tier compute grant for the local automaton runtime (no paid Conway credits).
+    return json({ balance_cents: 500, free_tier: true, automaton: auto.name });
+  }
+
+  async function handleAutomatonChatCompletions(request, env) {
+    const auto = await authAutomaton(request, env);
+    const body = await readJson(request, 400000);
+    const rawMessages = Array.isArray(body.messages) ? body.messages : [];
+    const normalized = rawMessages.slice(-16).map((m) => ({
+      role: ['system', 'assistant', 'user'].includes(String(m?.role)) ? String(m.role) : 'user',
+      content: String(m?.content ?? ''),
+    }));
+    if (!normalized.length) throw new HttpError(400, 'messages required');
+    // Keep the system prompt and the newest turns, within the model context budget.
+    const CHAR_BUDGET = 18000;
+    let budget = CHAR_BUDGET;
+    const messages = [];
+    const system = normalized.find((m) => m.role === 'system');
+    if (system) {
+      const content = system.content.slice(0, 3500);
+      messages.push({ role: 'system', content });
+      budget -= content.length;
+    }
+    const rest = normalized.filter((m) => m !== system).slice(-10);
+    for (let i = rest.length - 1; i >= 0; i--) {
+      const allowance = Math.min(3500, budget);
+      if (allowance < 200) break;
+      const content = rest[i].content.slice(-allowance);
+      messages.splice(system ? 1 : 0, 0, { role: rest[i].role, content });
+      budget -= content.length;
+    }
+    if (!messages.length) throw new HttpError(400, 'messages required');
+    if (!env.AI || typeof env.AI.run !== 'function') throw new HttpError(503, 'AI binding not configured');
+
+    // Free models do not speak OpenAI tool-calls natively. Emulate them with JSON.
+    const tools = Array.isArray(body.tools) ? body.tools : [];
+    if (tools.length) {
+      const list = tools
+        .slice(0, 20)
+        .map((t) => {
+          const fn = t?.function || t || {};
+          const props = fn.parameters?.properties || {};
+          const args = Object.fromEntries(
+            Object.entries(props).map(([k, v]) => [k, typeof v?.type === 'string' ? v.type : 'string'])
+          );
+          return `- ${fn.name}: ${String(fn.description || '').slice(0, 120)} | args: ${JSON.stringify(args)}`.slice(0, 300);
+        })
+        .join('\n')
+        .slice(0, 5000);
+      const toolSystem =
+        'You are an autonomous agent. When you need a tool, reply with ONLY this JSON and nothing else:\n' +
+        '{"tool_calls":[{"name":"tool_name","arguments":{...}}]}\n' +
+        'If no tool is needed, reply with normal text. Available tools:\n' +
+        list;
+      if (messages[0]?.role === 'system') {
+        messages[0] = { role: 'system', content: `${toolSystem}\n\n${messages[0].content}` };
+      } else {
+        messages.unshift({ role: 'system', content: toolSystem });
+      }
+    }
+
+    const models = [
+      '@cf/meta/llama-3.1-8b-instruct-fast',
+      '@cf/meta/llama-3.1-8b-instruct',
+      '@cf/meta/llama-3-8b-instruct',
+      '@cf/meta/llama-3.2-3b-instruct',
+    ];
+    const maxTokens = Math.max(32, Math.min(1024, num(body.max_tokens ?? body.max_completion_tokens, 400)));
+    const temperature = Math.max(0, Math.min(1.5, num(body.temperature, 0.4)));
+    let out = null;
+    let used = '';
+    let lastError = '';
+    for (const model of models) {
+      try {
+        out = await env.AI.run(model, { messages, max_tokens: maxTokens, temperature });
+        used = model;
+        if (String(out?.response || '').trim()) break;
+      } catch (e) {
+        lastError = String(e?.message || e || 'unknown');
+      }
+    }
+    if (!out) throw new HttpError(502, `AI generation failed: ${lastError.slice(0, 120)}`);
+    const toText = (v) => {
+      if (typeof v === 'string') return v;
+      if (v == null) return '';
+      if (typeof v === 'object') {
+        if (typeof v.content === 'string') return v.content;
+        if (typeof v.text === 'string') return v.text;
+        if (typeof v.response === 'string') return v.response;
+        try { return JSON.stringify(v); } catch { return ''; }
+      }
+      return String(v);
+    };
+    let content = toText(out?.response ?? out).trim();
+    let toolCalls = null;
+    if (tools.length) {
+      const jsonText = content.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+      const start = jsonText.indexOf('{');
+      const end = jsonText.lastIndexOf('}');
+      if (start !== -1 && end > start) {
+        try {
+          const parsed = JSON.parse(jsonText.slice(start, end + 1));
+          const calls = Array.isArray(parsed?.tool_calls) ? parsed.tool_calls : parsed?.name ? [parsed] : [];
+          if (calls.length) {
+            toolCalls = calls.slice(0, 4).map((c, i) => ({
+              id: `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}${i}`,
+              type: 'function',
+              function: {
+                name: String(c.name || c.tool || '').slice(0, 80),
+                arguments: JSON.stringify(c.arguments ?? c.args ?? {}),
+              },
+            }));
+          }
+        } catch {
+          /* not a tool call — keep as text */
+        }
+      }
+    }
+    const promptTokens = Math.ceil(messages.reduce((n, m) => n + String(m.content || '').length, 0) / 4);
+    const completionTokens = Math.ceil(content.length / 4);
+    return json({
+      id: `chatcmpl_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: used,
+      choices: [
+        toolCalls
+          ? {
+              index: 0,
+              message: { role: 'assistant', content: null, tool_calls: toolCalls },
+              finish_reason: 'tool_calls',
+            }
+          : { index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' },
+      ],
+      usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens },
       automaton: auto.name,
     });
   }
@@ -2625,6 +2767,12 @@ export function createReferral(deps) {
     }
     if (path === '/api/automaton/ai' && method === 'POST') {
       return handleAutomatonAi(request, env);
+    }
+    if (path === '/v1/chat/completions' && method === 'POST') {
+      return handleAutomatonChatCompletions(request, env);
+    }
+    if (path === '/v1/credits/balance' && method === 'GET') {
+      return handleAutomatonCredits(request, env);
     }
     if (path === '/api/automaton/quotes' && method === 'POST') {
       return handleAutomatonQuote(request, env);
