@@ -123,11 +123,13 @@ async function overpass(city, mirrorIndex = 0) {
     const t = el.tags || {};
     const name = t.name || t.brand || '';
     const email = String(t.email || t['contact:email'] || '').split(/[;,]/)[0].trim().toLowerCase();
-    if (!name || !email) continue;
-    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) continue;
-    if (/noreply|no-reply|example\.|test@|@example|@domain|@email|@sentry|wixpress/i.test(email)) continue;
+    const website = String(t.website || t['contact:website'] || '').trim();
+    if (!name) continue;
+    if (!email && !website) continue;
+    if (email && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) continue;
     out.push({
       email,
+      website,
       name: name.slice(0, 120),
       country: city.country,
       city: city.name,
@@ -136,6 +138,89 @@ async function overpass(city, mirrorIndex = 0) {
       channel: city.country === 'PK' ? 'email-pk' : 'email-intl',
     });
   }
+  return out;
+}
+
+const BAD_EMAIL = /noreply|no-reply|example\.|test@|@example|@domain|@email|@sentry|wixpress|\.png|\.jpg|\.jpeg|\.gif|\.webp|\.svg|\.css|\.js$/i;
+
+function cleanEmail(raw) {
+  const e = String(raw || '')
+    .toLowerCase()
+    .trim()
+    .replace(/^mailto:/, '')
+    .split(/[?;,]/)[0]
+    .replace(/[)>"'\s]+$/, '');
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) return '';
+  if (BAD_EMAIL.test(e)) return '';
+  return e;
+}
+
+function emailsFromHtml(html) {
+  const found = [];
+  for (const m of html.matchAll(/mailto:([^"'?>\s]+)/gi)) found.push(m[1]);
+  for (const m of html.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)) found.push(m[0]);
+  return [...new Set(found.map(cleanEmail).filter(Boolean))];
+}
+
+async function fetchPage(url) {
+  const res = await fetch(url, {
+    redirect: 'follow',
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; mhzaly-outreach/1.0)' },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!res.ok) return '';
+  const type = res.headers.get('content-type') || '';
+  if (!/text\/html|text\/plain/i.test(type)) return '';
+  const buf = await res.arrayBuffer();
+  return new TextDecoder('utf-8', { fatal: false }).decode(buf.slice(0, 400000));
+}
+
+async function findEmail(site) {
+  let base = String(site).trim();
+  if (!/^https?:\/\//i.test(base)) base = 'https://' + base;
+  let origin = '';
+  try { origin = new URL(base).origin; } catch { return ''; }
+  if (/facebook|instagram|twitter|x\.com|linkedin|yelp|tiktok|youtube/i.test(origin)) return '';
+  const urls = [base, `${origin}/contact`, `${origin}/contact-us`, `${origin}/about`];
+  for (const url of urls) {
+    try {
+      const html = await fetchPage(url);
+      if (!html) continue;
+      const emails = emailsFromHtml(html);
+      if (emails.length) {
+        const host = new URL(url).hostname.replace(/^www\./, '');
+        const root = host.split('.').slice(-2).join('.');
+        return emails.find((e) => e.includes(root)) || emails[0];
+      }
+    } catch { /* try next URL */ }
+  }
+  return '';
+}
+
+async function enrichEmails(rows, maxSites = 40) {
+  const out = rows.filter((r) => r.email);
+  const sites = [];
+  const seenHost = new Set();
+  for (const r of rows) {
+    if (r.email || !r.website) continue;
+    let host = '';
+    try {
+      host = new URL(/^https?:\/\//i.test(r.website) ? r.website : 'https://' + r.website).hostname;
+    } catch { continue; }
+    if (seenHost.has(host)) continue;
+    seenHost.add(host);
+    sites.push(r);
+    if (sites.length >= maxSites) break;
+  }
+  let index = 0;
+  async function worker() {
+    while (index < sites.length) {
+      const r = sites[index++];
+      const email = await findEmail(r.website);
+      if (email) out.push({ ...r, email });
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(8, sites.length) }, worker));
   return out;
 }
 
@@ -157,12 +242,22 @@ async function collectLeads() {
       }
     }
     found.push(...rows);
-    console.log(`${city.name} (${city.country}): ${rows.length} with email`);
+    console.log(`${city.name} (${city.country}): ${rows.filter((x) => x.email).length} direct emails, ${rows.filter((x) => !x.email && x.website).length} websites`);
     await sleep(1200);
   }
+
+  const withEmail = await enrichEmails(found);
+  console.log(`Website enrichment: ${found.length} raw -> ${withEmail.length} with email`);
+
   // Dedupe within this run.
   const seen = new Set();
-  return found.filter((x) => (seen.has(x.email) ? false : seen.add(x.email)));
+  return withEmail.filter((x) => {
+    if (!x.email) return false;
+    const key = x.email.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ── Email ────────────────────────────────────────────────────
