@@ -15,7 +15,7 @@ import path from 'node:path';
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(ROOT, 'automaton-outbox');
 const DAY = new Date().toISOString().slice(0, 10);
-const OWNER = '923321141889';
+const OWNER = '923274777744';
 
 function normalizePhone(raw) {
   if (!raw || typeof raw !== 'string') return null;

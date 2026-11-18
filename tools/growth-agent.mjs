@@ -23,7 +23,7 @@ const OUT = path.join(ROOT, 'automaton-outbox');
 const BLOG = path.join(ROOT, 'blog');
 const OLLAMA = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11435';
 const MODEL = process.env.GROWTH_MODEL || 'qwen3:1.7b';
-const WA = '923321141889';
+const WA = '923274777744';
 const REF = 'https://mhzaly.pages.dev/?ref=proof-agent';
 const TODAY = new Date().toISOString().slice(0, 10);
 
