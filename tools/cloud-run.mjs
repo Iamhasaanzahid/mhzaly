@@ -27,6 +27,8 @@ const SEND = process.argv.includes('--send');
 const PK_CAP = Math.max(0, parseInt(process.env.OUTREACH_PK_CAP || '10', 10));
 const INTL_CAP = Math.max(0, parseInt(process.env.OUTREACH_INTL_CAP || '10', 10));
 const SITE = 'https://mhzaly.pages.dev/?ref=mhzaly-sales';
+const ALL_CITIES = process.env.OUTREACH_ALL_CITIES === '1';
+const ENRICH_MAX = Math.max(0, parseInt(process.env.OUTREACH_ENRICH_MAX || '40', 10));
 const DRY = !SEND;
 
 if (!KEY) { console.error('MHZALY_API_KEY missing'); process.exit(1); }
@@ -230,7 +232,7 @@ async function enrichEmails(rows, maxSites = 40) {
 async function collectLeads() {
   // Rotate 8 cities per day so the whole list is covered regularly.
   const day = Math.floor(Date.now() / 86400000);
-  const todays = CITIES.filter((_, i) => i % 7 === day % 7);
+  const todays = ALL_CITIES ? CITIES : CITIES.filter((_, i) => i % 7 === day % 7);
   const found = [];
   for (let i = 0; i < todays.length; i++) {
     const city = todays[i];
@@ -249,7 +251,7 @@ async function collectLeads() {
     await sleep(1200);
   }
 
-  const withEmail = await enrichEmails(found);
+  const withEmail = await enrichEmails(found, ENRICH_MAX);
   console.log(`Website enrichment: ${found.length} raw -> ${withEmail.length} with email`);
 
   // Dedupe within this run.
