@@ -85,6 +85,7 @@
           message: text,
           shop: document.title || '',
           city: new URLSearchParams(location.search).get('city') || '',
+          ref: new URLSearchParams(location.search).get('ref') || '',
         }),
       });
       const data = await res.json();

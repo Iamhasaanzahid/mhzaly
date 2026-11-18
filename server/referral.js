@@ -2170,6 +2170,12 @@ export function createReferral(deps) {
         trialEndsAt: status === 'trial' ? s.subscription_end || null : null,
         paidUntil: status === 'active' ? s.subscription_end || null : null,
         createdAt: s.created_at,
+        nextAction: status === 'pending' ? 'Owner se approval karwayein'
+          : status === 'trial' ? 'Demo support karein; trial end par payment follow-up'
+          : status === 'payment_due' ? 'Payment follow-up karein; receipt par 30% commission'
+          : status === 'active' ? 'Active — commission earned, retain karein'
+          : status === 'blocked' ? 'Blocked — owner se baat karein'
+          : 'Rejected — naya signup karwayein',
       };
     });
     const quoteCount = await env.DB.prepare('SELECT COUNT(*) AS c FROM price_quotes WHERE automaton_id = ?')
@@ -2312,7 +2318,7 @@ export function createReferral(deps) {
   async function runScheduled(env) {
     const now = new Date();
     const nowStr = now.toISOString();
-    const result = { moved: 0, emailed: 0, payoutReminders: 0, proofReminders: 0, agentEmails: 0, autoPayouts: 0 };
+    const result = { moved: 0, emailed: 0, payoutReminders: 0, proofReminders: 0, agentEmails: 0, autoPayouts: 0, agentOwnership: 0 };
 
     /* 1) trial / subscription expiry → payment_due */
     const candidates = await env.DB.prepare(
@@ -2455,6 +2461,54 @@ export function createReferral(deps) {
       if (sent.ok) result.agentEmails = 1;
     } catch {
       /* agent digest must never break the cron */
+    }
+
+    /* 6) Referred-client ownership: agent ko apne client ki next action yaad dilana */
+    try {
+      const owned = await env.DB.prepare(
+        `SELECT s.id, s.name, s.code, s.phone, s.status, s.billing_status,
+                s.referred_by, s.subscription_end, a.name AS automaton_name, a.ref_code,
+                a.wallet_address, a.commission_pct
+         FROM shops s
+         JOIN automatons a ON a.id = s.referred_by
+         WHERE a.active = 1
+           AND s.blocked_at IS NULL
+           AND (s.status = 'pending' OR s.billing_status IN ('trial', 'payment_due'))
+         ORDER BY CASE s.billing_status WHEN 'payment_due' THEN 0 WHEN 'trial' THEN 1 ELSE 2 END
+         LIMIT 50`
+      ).all();
+
+      for (const c of owned.results || []) {
+        const kind = c.status === 'pending' ? 'agent_own_pending'
+          : c.billing_status === 'payment_due' ? 'agent_own_payment_due' : 'agent_own_trial';
+        const inserted = await logEmailOnce(env, {
+          shopId: c.id,
+          kind,
+          refId: '',
+        });
+        if (!inserted) continue;
+        result.agentOwnership += 1;
+        const nextAction = kind === 'agent_own_pending'
+          ? 'Client abhi pending hai — owner panel se approve karwayein, phir 1 din ka demo activate ho jayega.'
+          : kind === 'agent_own_payment_due'
+            ? 'Client ka trial khatam ho gaya — payment follow-up karein. Receipt aate hi 30% commission earned hogi.'
+            : 'Client trial par hai — demo support karein. Trial khatam hone par payment follow-up zaroori hai.';
+        await sendOwnerAlert(env, {
+          subject: `mhzaly agent zimadari: ${c.name} (${kind === 'agent_own_payment_due' ? 'payment due' : kind === 'agent_own_trial' ? 'trial' : 'pending'})`,
+          intro: `${c.automaton_name} ne ye client laya hai. ${nextAction}`,
+          rows: [
+            ['Client', `${c.name} · ${c.code}`],
+            ['Phone', c.phone || '—'],
+            ['Stage', c.status === 'pending' ? 'pending' : (c.billing_status || '—')],
+            ['Agent', `${c.automaton_name} (${c.ref_code}) · ${c.commission_pct}%`],
+            ['Wallet', c.wallet_address || '—'],
+            ['Trial end', c.subscription_end || '—'],
+          ],
+          buttons: [{ href: OWNER_PANEL_URL, label: 'Owner panel', bg: '#0f766e' }],
+        }).catch(() => {});
+      }
+    } catch {
+      /* ownership reminders must never break the cron */
     }
 
     return result;

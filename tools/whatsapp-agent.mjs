@@ -23,7 +23,7 @@ const DAY = new Date().toISOString().slice(0, 10);
 const WA = '923274777744';          // agent WhatsApp number given by owner
 const WA_DISPLAY = '0327 4777744';
 const SITE = 'https://mhzaly.pages.dev';
-const REF = `${SITE}/?ref=whatsapp-agent`;
+const REF = `${SITE}/?ref=mhzaly-sales`;   // real automaton — 30% commission on referred clients
 const CAP = 25;                     // safe daily outreach cap
 
 function normalizePhone(raw) {
@@ -52,7 +52,7 @@ for (const l of leads) {
   if (seen.has(key)) continue;
   seen.add(key);
   const name = String(l.name || '').trim();
-  const pitch = `Assalam o Alaikum ${name} — main mhzaly (simple shop software) ke bare mein baat karna cha raha tha. Inventory, sales, customer khata, repair jobs aur profit report ek hi jagah. Aap ki dukan ke liye 1 din ka free demo de sakta hoon. Interested hain to reply karein. Shukriya!`;
+  const pitch = `Assalam o Alaikum ${name} — main mhzaly (simple shop software) ke bare mein baat karna cha raha tha. Inventory, sales, customer khata, repair jobs aur profit report ek hi jagah. 1 din ka FREE demo yahan se shuru karein: ${REF} — shuru karte hi main aapki madad karunga. Shukriya!`;
   queue.push({
     name, area: l.area || '', shop: l.shop || '', phone, email,
     wa: phone ? `https://wa.me/${phone}?text=${encodeURIComponent(pitch)}` : '',
@@ -183,7 +183,7 @@ document.getElementById('gen').onclick=()=>{const t=document.getElementById('msg
 document.getElementById('clear').onclick=()=>{document.getElementById('msg').value='';document.getElementById('reply').style.display='none'};
 document.getElementById('copy').onclick=async()=>{await navigator.clipboard.writeText(document.getElementById('replytext').textContent);log('Reply copied')};
 document.querySelectorAll('[data-wa]').forEach(a=>a.onclick=()=>{if(state.sent>=${CAP}){alert('Aaj ka cap (${CAP}) ho gaya — kal dobara try karein');return false}state.sent++;const i=a.dataset.wa;state.stages[i]='contacted';save();renderStat();log('WhatsApp opened: #'+(Number(i)+1)+' '+document.querySelector('[data-id="'+i+'"] h2').textContent);sync()});
-document.querySelectorAll('[data-follow]').forEach(b=>b.onclick=()=>{const i=b.dataset.follow;const el=document.querySelector('[data-id="'+i+'"]');const name=el.querySelector('h2').textContent;const stage=state.stages[i]||'new';const msg=stage==='new'?'Assalam o Alaikum '+name+' — 1 din ka free demo abhi bhi available hai. Interested hain to reply karein.':stage==='demo'?'Assalam o Alaikum '+name+' — demo kaise laga? Koi issue ho to main madad kar sakta hoon.':'Assalam o Alaikum '+name+' — mhzaly ke bare mein koi sawal? Free demo ready hai.';document.getElementById('msg').value=msg;document.querySelector('[data-tab="chat"]').click();document.getElementById('gen').click();log('Follow-up drafted: '+name+' ('+stage+')')});
+document.querySelectorAll('[data-follow]').forEach(b=>b.onclick=()=>{const i=b.dataset.follow;const el=document.querySelector('[data-id="'+i+'"]');const name=el.querySelector('h2').textContent;const stage=state.stages[i]||'new';const msg=stage==='new'?'Assalam o Alaikum '+name+' — 1 din ka free demo abhi bhi available hai. Yahan shuru karein: ${REF}':stage==='demo'?'Assalam o Alaikum '+name+' — demo kaise laga? Koi issue ho to main madad kar sakta hoon. Link: ${REF}':'Assalam o Alaikum '+name+' — mhzaly ke bare mein koi sawal? Free demo ready hai: ${REF}';document.getElementById('msg').value=msg;document.querySelector('[data-tab="chat"]').click();document.getElementById('gen').click();log('Follow-up drafted: '+name+' ('+stage+')')});
 document.querySelectorAll('[data-stage]').forEach(s=>{s.value=state.stages[s.dataset.stage]||'new';s.onchange=()=>{state.stages[s.dataset.stage]=s.value;save();log('Stage: '+s.value+' #'+(Number(s.dataset.stage)+1))}});
 document.getElementById('reset').onclick=()=>{localStorage.removeItem(KEY);location.reload()};
 function sync(){document.querySelectorAll('[data-stage]').forEach(s=>{s.value=state.stages[s.dataset.stage]||'new'})}
@@ -191,7 +191,7 @@ function sync(){document.querySelectorAll('[data-stage]').forEach(s=>{s.value=st
 /* ---- Auto DM runner: prepares + opens each chat, human taps Send ---- */
 let autoTimer=null, autoIndex=0, autoRunning=false;
 const waLeads=${JSON.stringify(queue.map((x,i)=>({i,name:x.name,wa:x.wa})).filter(x=>x.wa))};
-function autoMsg(name){return 'Assalam o Alaikum '+name+' — main mhzaly (simple shop software) ke bare mein baat karna cha raha tha. Inventory, sales, customer khata, repair jobs aur profit report ek hi jagah. Aap ki dukan ke liye 1 din ka free demo de sakta hoon. Interested hain to reply karein. Shukriya!'}
+function autoMsg(name){return 'Assalam o Alaikum '+name+' — main mhzaly (simple shop software) ke bare mein baat karna cha raha tha. Inventory, sales, customer khata, repair jobs aur profit report ek hi jagah. 1 din ka FREE demo yahan se shuru karein: ${REF} — shuru karte hi main aapki madad karunga. Shukriya!'}
 function autoStep(){
   if(!autoRunning)return;
   if(state.sent>=${CAP}){document.getElementById('autostat').textContent='Aaj ka cap (${CAP}) pura ho gaya — kal dobara chalayein.';autoRunning=false;return}

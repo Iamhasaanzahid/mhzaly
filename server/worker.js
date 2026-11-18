@@ -1793,13 +1793,13 @@ const CHAT_INTENTS = [
   { id: 'payment', re: /jazzcash|meezan|western|transfer|receipt|pay|bhuj|deposit/i,
     reply: 'Payment ke 3 tareeqe:\n1) JazzCash — Muhammad Hassaan Zahid, 0332 1141889\n2) Meezan / Western Union — MUHAMMAD HASSAAN ZAHID (Pakistan)\n3) Card / Stripe (international)\nReceipt bhejein to 24h mein account active.' },
   { id: 'demo', re: /demo|trial|try|dekh|test|free|azma|chahiye/i,
-    reply: '1 din ka FREE demo ready hai 👉 https://mhzaly.pages.dev/?ref=website-chat#/login\nEmail se sign up karein — 24h poora access. Setup mein madad chahiye to yahin batayein.' },
+    reply: '1 din ka FREE demo ready hai 👉 https://mhzaly.pages.dev/?ref=mhzaly-sales#/login\nEmail se sign up karein — 24h poora access. Setup mein madad chahiye to yahin batayein.' },
   { id: 'price', re: /rate|price|kimat|qimat|kitna|cost|fee|charge|rs|rupee/i,
     reply: 'Pakistan: Monthly / Quarterly / Annual plans. Lifetime $2000 sirf major countries ke liye. Exact rate confirmation ke liye email chhod dein — main bhej deta hoon. Plans: https://mhzaly.pages.dev/sell' },
   { id: 'referral', re: /refer|agent|commission|partner|earn|paisa|kamay/i,
-    reply: 'Referral Program: aap kisi dukan ko mhzaly recommend karein, payment par (gateway fee ke baad) 30% commission. Refund par adjust. Link: https://mhzaly.pages.dev/?ref=website-chat' },
+    reply: 'Referral Program: aap kisi dukan ko mhzaly recommend karein, payment par (gateway fee ke baad) 30% commission. Refund par adjust. Link: https://mhzaly.pages.dev/?ref=mhzaly-sales' },
   { id: 'support', re: /help|madad|problem|issue|login|password|error|setup/i,
-    reply: 'Madad mil jayegi. Apna issue aur email yahin likhein — 24h mein reply karta hoon. Login: https://mhzaly.pages.dev/?ref=website-chat#/login' },
+    reply: 'Madad mil jayegi. Apna issue aur email yahin likhein — 24h mein reply karta hoon. Login: https://mhzaly.pages.dev/?ref=mhzaly-sales#/login' },
   { id: 'greet', re: /assalam|salam|hi|hello|hey/i,
     reply: 'Wa Alaikum Assalam! 👋 Main mhzaly ka sales agent hoon — shop software for inventory, sales, khata, repair jobs, profit. 1 din ka free demo chahiye? Apna email bata dein.' },
   { id: 'interested', re: /interested|haan|han|yes|ok|theek|achcha|good|bhej|send/i,
@@ -1835,19 +1835,27 @@ async function handleChat(request, env) {
   const contact = extractContact(message);
   const shop = String(body.shop || '').slice(0, 120) || null;
   const city = String(body.city || '').slice(0, 80) || null;
+  const refCode = String(body.ref || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) || null;
+  let referredBy = null;
+  if (refCode) {
+    const auto = await env.DB.prepare('SELECT id FROM automatons WHERE ref_code = ? AND active = 1')
+      .bind(refCode).first();
+    if (auto) referredBy = auto.id;
+  }
 
   try {
     await env.DB.prepare(
-      `INSERT INTO chat_leads (session_id, name, email, shop, city, intent, last_message, stage)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'new')
+      `INSERT INTO chat_leads (session_id, name, email, shop, city, intent, referred_by, last_message, stage)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new')
        ON CONFLICT(session_id) DO UPDATE SET
          email = COALESCE(excluded.email, chat_leads.email),
          shop  = COALESCE(excluded.shop, chat_leads.shop),
          city  = COALESCE(excluded.city, chat_leads.city),
          intent = excluded.intent,
+         referred_by = COALESCE(excluded.referred_by, chat_leads.referred_by),
          last_message = excluded.last_message,
          updated_at = datetime('now')`
-    ).bind(session, null, contact.email, shop, city, hit.id, message.slice(0, 500)).run();
+    ).bind(session, null, contact.email, shop, city, hit.id, referredBy, message.slice(0, 500)).run();
   } catch (e) {
     // chat must never break for the visitor if logging fails
   }

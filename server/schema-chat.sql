@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS chat_leads (
   shop TEXT,
   city TEXT,
   intent TEXT,
+  referred_by TEXT,
   last_message TEXT,
   stage TEXT NOT NULL DEFAULT 'new',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
