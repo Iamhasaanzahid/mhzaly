@@ -72,6 +72,17 @@ for (const dir of DIRS) {
   fs.cpSync(src, path.join(dist, dir), { recursive: true });
 }
 
+/* Mail agent + outreach CSV — generated from gitignored leads, never committed. */
+try {
+  const info = execFileSync(process.execPath, [path.join(root, 'tools', 'mail-agent.mjs'), '--dist', dist], {
+    cwd: root, encoding: 'utf8',
+  });
+  console.log(`✓ Mail agent generated: ${info.trim()}`);
+} catch (e) {
+  console.error('✘ Mail agent generation failed:', String(e.stderr || e));
+  process.exit(1);
+}
+
 // RFC 9116 security contact file
 const wellKnown = path.join(root, '.well-known');
 if (fs.existsSync(wellKnown)) {

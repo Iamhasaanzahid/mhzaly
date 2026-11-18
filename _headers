@@ -47,6 +47,22 @@
   Cache-Control: no-store, max-age=0, must-revalidate
   X-Robots-Tag: noindex, nofollow, noarchive
 
+# Outreach tool — private, never indexed or cached publicly.
+/mail-agent
+  Cache-Control: no-store, max-age=0, must-revalidate
+  X-Robots-Tag: noindex, nofollow, noarchive
+
+/mail-agent.html
+  Cache-Control: no-store, max-age=0, must-revalidate
+  X-Robots-Tag: noindex, nofollow, noarchive
+
+/mail-agent-leads.csv
+  Cache-Control: no-store, max-age=0, must-revalidate
+  X-Robots-Tag: noindex, nofollow, noarchive
+
+/js/mail-agent.js
+  Cache-Control: no-store, max-age=0, must-revalidate
+
 /verify
   Cache-Control: no-store, max-age=0, must-revalidate
   X-Robots-Tag: noindex, nofollow, noarchive
