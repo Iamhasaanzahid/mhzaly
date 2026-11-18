@@ -676,7 +676,7 @@ export function createReferral(deps) {
   async function handleOwnerReferralOverview(request, env) {
     await requireOwner(request, env);
 
-    const [shopsRows, autosRows, quotesRows, limitsRows, payoutRows, paymentRows, proofRows] = await Promise.all([
+    const [shopsRows, autosRows, quotesRows, limitsRows, payoutRows, paymentRows, proofRows, chatRows] = await Promise.all([
       env.DB.prepare(
         `SELECT id, name, code, email, phone, shop_type, status, plan, billing_status,
                 subscription_start, subscription_end, blocked_at, block_reason,
@@ -719,6 +719,10 @@ export function createReferral(deps) {
          LEFT JOIN shops s ON s.id = pr.shop_id
          ORDER BY CASE pr.status WHEN 'pending' THEN 0 ELSE 1 END, pr.created_at DESC
          LIMIT 100`
+      ).all(),
+      env.DB.prepare(
+        `SELECT id, session_id, name, email, shop, city, intent, last_message, stage, created_at, updated_at
+         FROM chat_leads ORDER BY updated_at DESC LIMIT 100`
       ).all(),
     ]);
 
@@ -851,6 +855,11 @@ export function createReferral(deps) {
       payouts,
       payments,
       proofs,
+      chatLeads: (chatRows.results || []).map((c) => ({
+        id: c.id, sessionId: c.session_id, name: c.name, email: c.email,
+        shop: c.shop, city: c.city, intent: c.intent, lastMessage: c.last_message,
+        stage: c.stage, createdAt: c.created_at, updatedAt: c.updated_at,
+      })),
     });
   }
 

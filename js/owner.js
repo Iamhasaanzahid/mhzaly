@@ -1143,6 +1143,22 @@ function referralBodyHTML(tab, data) {
     </table></div></div>`;
   }
 
+  if (tab === 'chat') {
+    const list = data.chatLeads || [];
+    if (!list.length) return refEmpty('Abhi koi website chat lead nahi hai. Visitors chat karte hi yahan dikhenge.');
+    const rows = list.map((c) => `<tr>
+      <td><div class="shop-name">${esc(c.email || c.sessionId || 'Anonymous')}</div><div class="shop-sub mono">${esc(c.shop || '')} ${esc(c.city || '')}</div></td>
+      <td>${esc(c.intent || '—')}</td>
+      <td>${esc(c.lastMessage || '—')}</td>
+      <td><span class="badge ${c.stage === 'paid' ? 'ok' : c.stage === 'trial' ? 'warn' : 'neutral'}">${esc(c.stage || 'new')}</span></td>
+      <td>${esc(fmtDateTime(c.updatedAt))}</td>
+    </tr>`).join('');
+    return `<div class="owner-card"><div class="owner-table-wrap"><table class="owner-table">
+      <thead><tr><th>Visitor</th><th>Intent</th><th>Last message</th><th>Stage</th><th>Updated</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`;
+  }
+
   return refEmpty('Unknown tab.');
 }
 
@@ -1173,6 +1189,7 @@ async function renderReferralDashboard() {
     ['prices', 'Prices'],
     ['payouts', 'Payouts'],
     ['payments', 'Payments'],
+    ['chat', 'Chat Leads'],
   ];
   app.innerHTML = `
     <div class="owner-shell">

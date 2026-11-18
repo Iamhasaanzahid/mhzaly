@@ -1787,6 +1787,81 @@ const referral = createReferral({
   TRIAL_DAYS,
 });
 
+/* ---------- Website Chat Agent (no phone number required) ---------- */
+
+const CHAT_INTENTS = [
+  { id: 'payment', re: /jazzcash|meezan|western|transfer|receipt|pay|bhuj|deposit/i,
+    reply: 'Payment ke 3 tareeqe:\n1) JazzCash — Muhammad Hassaan Zahid, 0332 1141889\n2) Meezan / Western Union — MUHAMMAD HASSAAN ZAHID (Pakistan)\n3) Card / Stripe (international)\nReceipt bhejein to 24h mein account active.' },
+  { id: 'demo', re: /demo|trial|try|dekh|test|free|azma|chahiye/i,
+    reply: '1 din ka FREE demo ready hai 👉 https://mhzaly.pages.dev/?ref=website-chat#/login\nEmail se sign up karein — 24h poora access. Setup mein madad chahiye to yahin batayein.' },
+  { id: 'price', re: /rate|price|kimat|qimat|kitna|cost|fee|charge|rs|rupee/i,
+    reply: 'Pakistan: Monthly / Quarterly / Annual plans. Lifetime $2000 sirf major countries ke liye. Exact rate confirmation ke liye email chhod dein — main bhej deta hoon. Plans: https://mhzaly.pages.dev/sell' },
+  { id: 'referral', re: /refer|agent|commission|partner|earn|paisa|kamay/i,
+    reply: 'Referral Program: aap kisi dukan ko mhzaly recommend karein, payment par (gateway fee ke baad) 30% commission. Refund par adjust. Link: https://mhzaly.pages.dev/?ref=website-chat' },
+  { id: 'support', re: /help|madad|problem|issue|login|password|error|setup/i,
+    reply: 'Madad mil jayegi. Apna issue aur email yahin likhein — 24h mein reply karta hoon. Login: https://mhzaly.pages.dev/?ref=website-chat#/login' },
+  { id: 'greet', re: /assalam|salam|hi|hello|hey/i,
+    reply: 'Wa Alaikum Assalam! 👋 Main mhzaly ka sales agent hoon — shop software for inventory, sales, khata, repair jobs, profit. 1 din ka free demo chahiye? Apna email bata dein.' },
+  { id: 'interested', re: /interested|haan|han|yes|ok|theek|achcha|good|bhej|send/i,
+    reply: 'Shukriya! 👍 Dukan ka naam, city aur email bata dein — main 1 din ka demo link bhej deta hoon.' },
+  { id: 'thanks', re: /shukriya|thanks|thank|jazak/i,
+    reply: 'Shukriya! 😊 Koi sawal ho to yahin poochlein. Free demo hamesha ready hai.' },
+];
+
+function chatReply(text) {
+  const s = String(text || '').toLowerCase();
+  const ref = /refer|agent|commission|partner|kamay|paisa/.test(s);
+  const price = /rate|price|kimat|qimat|kitna|cost|fee|charge|rs|rupee|payment|jazzcash|meezan|western/.test(s);
+  const demo = /demo|trial|try|dekh|test|free|azma/.test(s);
+  if (ref) return CHAT_INTENTS.find((x) => x.id === 'referral');
+  if (price && demo) return CHAT_INTENTS.find((x) => x.id === 'demo');
+  for (const x of CHAT_INTENTS) if (x.re.test(s)) return x;
+  return { id: 'fallback', reply: 'Assalam o Alaikum! 👋 Main mhzaly ka agent hoon. "demo" likhein (1 din free), "rate" likhein (pricing), ya apna sawal likhein — main madad karunga. Email bata dein to direct reply bhi kar sakta hoon.' };
+}
+
+function extractContact(text) {
+  const s = String(text || '');
+  const email = (s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || null;
+  const phone = (s.match(/(?:\+?92[\s-]?)?0?3\d{2}[\s-]?\d{7}/) || [])[0] || null;
+  return { email: email ? email.toLowerCase() : null, phone };
+}
+
+async function handleChat(request, env) {
+  const body = await readJson(request, 4000);
+  const session = String(body.session || '').slice(0, 80).replace(/[^a-zA-Z0-9-]/g, '');
+  const message = String(body.message || '').trim().slice(0, 1000);
+  if (!session || !message) return json({ error: 'session and message required' }, 400);
+  const hit = chatReply(message);
+  const contact = extractContact(message);
+  const shop = String(body.shop || '').slice(0, 120) || null;
+  const city = String(body.city || '').slice(0, 80) || null;
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO chat_leads (session_id, name, email, shop, city, intent, last_message, stage)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'new')
+       ON CONFLICT(session_id) DO UPDATE SET
+         email = COALESCE(excluded.email, chat_leads.email),
+         shop  = COALESCE(excluded.shop, chat_leads.shop),
+         city  = COALESCE(excluded.city, chat_leads.city),
+         intent = excluded.intent,
+         last_message = excluded.last_message,
+         updated_at = datetime('now')`
+    ).bind(session, null, contact.email, shop, city, hit.id, message.slice(0, 500)).run();
+  } catch (e) {
+    // chat must never break for the visitor if logging fails
+  }
+  return json({ reply: hit.reply, intent: hit.id, captured: !!contact.email }, 200);
+}
+
+async function handleOwnerChatLeads(request, env) {
+  await requireOwner(request, env);
+  const { results } = await env.DB.prepare(
+    'SELECT id, session_id, name, email, shop, city, intent, last_message, stage, created_at, updated_at FROM chat_leads ORDER BY updated_at DESC LIMIT 200'
+  ).all();
+  return json({ leads: results || [] }, 200);
+}
+
 /* ---------- entry ---------- */
 
 export default {
@@ -1831,6 +1906,10 @@ export default {
         response = await handleChangePassword(request, env);
       } else if (path === '/api/account' && request.method === 'DELETE') {
         response = await handleAccountDelete(request, env);
+      } else if (path === '/api/chat' && request.method === 'POST') {
+        response = await handleChat(request, env);
+      } else if (path === '/api/owner/chat' && request.method === 'GET') {
+        response = await handleOwnerChatLeads(request, env);
       } else {
         const referralResponse = await referral.handleReferralRoute(request, env);
         response = referralResponse || json({ error: 'Not found' }, 404);
