@@ -122,7 +122,7 @@ h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--dim);margin:0 0 16px}
 .bar{position:sticky;top:0;background:rgba(11,16,32,.95);padding:10px 0;border-bottom:1px solid var(--line);z-index:2;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .bar b{font-size:18px}.reset{background:none;border:1px solid var(--line);color:var(--dim);padding:6px 10px;border-radius:8px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
-.card.done{opacity:.45}.head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .num{color:var(--dim);font-size:12px}h2{font-size:17px;margin:2px 0}.meta{color:var(--dim);font-size:13px}
 .done{font-size:13px;color:var(--dim);white-space:nowrap;cursor:pointer}.done input{width:17px;height:17px;vertical-align:middle}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
@@ -137,7 +137,7 @@ h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--dim);margin:0 0 16px}
 <script>
 const KEY='mhzaly-queue-${DAY}';
 const state=JSON.parse(localStorage.getItem(KEY)||'{}');
-function paint(){document.querySelectorAll('[data-done]').forEach(c=>{c.checked=!!state[c.dataset.done];c.closest('.card').classList.toggle('done',!!state[c.dataset.done])});document.getElementById('stat').textContent=Object.values(state).filter(Boolean).length+' / ${queue.length} done'}
+function paint(){document.querySelectorAll('[data-done]').forEach(c=>{const d=!!state[c.dataset.done];c.checked=d;const card=c.closest('.card');card.classList.toggle('done',d);card.style.display=d?'none':''});const left=${queue.length}-Object.values(state).filter(Boolean).length;document.getElementById('stat').textContent=left+' leads baqi hain'}
 document.querySelectorAll('[data-done]').forEach(c=>c.addEventListener('change',()=>{state[c.dataset.done]=c.checked;localStorage.setItem(KEY,JSON.stringify(state));paint()}));
 document.getElementById('reset').onclick=()=>{localStorage.removeItem(KEY);location.reload()};
 paint();
