@@ -42,7 +42,7 @@ async function api(pathname, method = 'GET', body = null) {
       'User-Agent': 'mhzaly-automaton/1.0',
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(25000),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`${method} ${pathname} -> ${res.status}: ${text.slice(0, 160)}`);
@@ -114,7 +114,7 @@ async function overpass(city, mirrorIndex = 0) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'mhzaly-outreach/1.0' },
     body: `data=${encodeURIComponent(q)}`,
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(25000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -142,18 +142,18 @@ async function overpass(city, mirrorIndex = 0) {
 async function collectLeads() {
   // Rotate 8 cities per day so the whole list is covered regularly.
   const day = Math.floor(Date.now() / 86400000);
-  const todays = CITIES.filter((_, i) => i % 5 === day % 5);
+  const todays = CITIES.filter((_, i) => i % 7 === day % 7);
   const found = [];
   for (let i = 0; i < todays.length; i++) {
     const city = todays[i];
     let rows = [];
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         rows = await overpass(city, attempt);
         break;
       } catch (e) {
         console.log(`${city.name}: attempt ${attempt + 1} failed (${e.message})`);
-        await sleep(2500);
+        await sleep(1500);
       }
     }
     found.push(...rows);
