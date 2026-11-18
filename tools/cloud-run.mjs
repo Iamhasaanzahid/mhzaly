@@ -103,6 +103,7 @@ const MIRRORS = [
 const SHOP_TYPES = 'mobile|electronics|computer|hardware|variety|general|department_store|telecommunication';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const mask = (e) => { const [u, d] = String(e || '').split('@'); return `${(u || '').slice(0, 1)}***@${d || ''}`; };
 
 async function overpass(city, mirrorIndex = 0) {
   const [s, w, n, e] = city.bbox;
@@ -326,17 +327,17 @@ async function sendChannel(channel, cap) {
       ? `1 din ka free demo — ${x.name || 'aap ki shop'} (mhzaly)`
       : `${x.name || 'your shop'} — 1-day free demo (mhzaly)`;
     const body = isPk ? pkMessage(x) : intlMessage(x);
-    if (DRY) { console.log(`  [dry] ${channel} ${x.email}`); continue; }
+    if (DRY) { console.log(`  [dry] ${channel} ${mask(x.email)}`); continue; }
     try {
       sendMail(x.email, subject, body);
       await api('/api/automaton/outreach/mark', 'POST', {
         email: x.email, channel, name: x.name, status: 'sent',
       });
       sent++;
-      console.log(`  sent ${channel} ${x.email}`);
+      console.log(`  sent ${channel} ${mask(x.email)}`);
     } catch (e) {
       failed++;
-      console.log(`  failed ${channel} ${x.email}: ${String(e.stderr || e.message).slice(0, 120)}`);
+      console.log(`  failed ${channel} ${mask(x.email)}: ${String(e.stderr || e.message).slice(0, 120)}`);
     }
     await sleep(2000);
   }

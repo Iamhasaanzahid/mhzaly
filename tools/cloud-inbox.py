@@ -126,7 +126,16 @@ def main() -> None:
             pass
 
     client.logout()
-    print(json.dumps({"scanned": len(ids), "stops": stops, "bounces": bounces}, indent=2))
+    def mask(address: str) -> str:
+        user, _, domain = address.partition("@")
+        return (user[:1] or "*") + "***@" + domain
+
+
+    print(json.dumps({
+        "scanned": len(ids),
+        "stops": [mask(x) for x in stops],
+        "bounces": [mask(x) for x in bounces],
+    }, indent=2))
 
 
 if __name__ == "__main__":
