@@ -10,6 +10,12 @@ export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselect
 export CLOUDFLARE_ACCOUNT_ID="578d3b1ea09c06627b87ea4a1753521f"
 export OLLAMA_BASE_URL="http://127.0.0.1:11435"
 
+# Optional email provider credentials (created by the owner / free account).
+# Example: ~/.config/mhzaly/email.env with EMAIL_PROVIDER=brevo and BREVO_API_KEY=...
+if [ -f "$HOME/.config/mhzaly/email.env" ]; then
+  . "$HOME/.config/mhzaly/email.env"
+fi
+
 ROOT="/home/mhzaly/Documents/mhzaly"
 OUT="$ROOT/automaton-outbox"
 mkdir -p "$OUT"
@@ -32,6 +38,11 @@ GROWTH=$?
 # 3) daily social marketing kit (real AI, no keys)
 node tools/sales-automaton.mjs >> "$OUT/cron.log" 2>&1
 SALES=$?
+
+# 4) send only to opted-in addresses, if a provider key is configured
+if [ -n "${EMAIL_PROVIDER:-}" ]; then
+  node tools/email-sender.mjs --send >> "$OUT/cron.log" 2>&1
+fi
 
 echo "$(date -Is) growth=$GROWTH sales=$SALES" >> "$OUT/cron.log"
 exit $GROWTH

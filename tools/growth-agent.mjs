@@ -161,7 +161,7 @@ async function writeLeads(leads) {
 }
 
 function validEmail(v) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || ''));
+  return /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(String(v || '').trim());
 }
 
 function emailBody(lead) {
@@ -180,7 +180,13 @@ https://mhzaly.pages.dev/sell
 async function writeEmails(leads) {
   const dir = path.join(OUT, 'outbox');
   await fs.mkdir(dir, { recursive: true });
-  const withEmail = leads.filter((l) => validEmail(l.email));
+  const seen = new Set();
+  const withEmail = leads.filter((l) => {
+    const email = String(l.email || '').trim().toLowerCase();
+    if (!validEmail(email) || seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
   let n = 0;
   for (const l of withEmail.slice(0, 50)) {
     const safe = l.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 40) || 'shop';
