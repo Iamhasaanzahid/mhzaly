@@ -11,6 +11,7 @@
  *   mailjet   MAILJET_API_KEY + MAILJET_API_SECRET, MAIL_FROM
  *   resend    RESEND_API_KEY, MAIL_FROM
  *   smtp2go   SMTP2GO_API_KEY, MAIL_FROM
+ *   gmail     GMAIL_USER + GMAIL_APP_PASSWORD, MAIL_FROM (uses curl SMTP, no npm deps)
  *
  * Usage:
  *   node tools/email-sender.mjs                 # dry run (prints plan)
@@ -22,6 +23,11 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(ROOT, 'automaton-outbox');
@@ -68,6 +74,42 @@ async function loadConsent() {
     if (Array.isArray(data)) return data.map((x) => (typeof x === 'string' ? x : x.email)).filter(Boolean);
   } catch {}
   return [];
+}
+
+function emailOf(value) {
+  const m = String(value || '').match(/<([^>]+)>/);
+  return (m ? m[1] : String(value || '')).trim();
+}
+
+async function sendGmail(to, subject, text) {
+  const user = process.env.GMAIL_USER || emailOf(FROM);
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  const from = emailOf(FROM) || user;
+  const raw = [
+    `From: ${FROM}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    text + UNSUB,
+  ].join('\r\n');
+  const tmp = path.join(os.tmpdir(), `mhzaly-${Date.now()}-${Math.random().toString(36).slice(2)}.eml`);
+  await fs.writeFile(tmp, raw, 'utf8');
+  try {
+    const { stdout, stderr } = await execFileAsync('curl', [
+      '-sS', '--url', 'smtp://smtp.gmail.com:587', '--ssl-reqd',
+      '--user', `${user}:${pass}`,
+      '--mail-from', from,
+      '--mail-rcpt', to,
+      '--upload-file', tmp,
+    ]);
+    return { ok: true, status: 0, body: (stdout || stderr || '').slice(0, 500) };
+  } catch (err) {
+    return { ok: false, status: err.code || 1, body: String(err.stderr || err.message || err).slice(0, 500) };
+  } finally {
+    await fs.unlink(tmp).catch(() => {});
+  }
 }
 
 async function sendBrevo(to, subject, text) {
@@ -124,7 +166,8 @@ async function main() {
     if (DRY) { log(`dry-run -> ${d.to} | ${d.subject}`); continue; }
     let r;
     try {
-      if (provider === 'brevo' && process.env.BREVO_API_KEY) r = await sendBrevo(d.to, d.subject, d.body);
+      if (provider === 'gmail' && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) r = await sendGmail(d.to, d.subject, d.body);
+      else if (provider === 'brevo' && process.env.BREVO_API_KEY) r = await sendBrevo(d.to, d.subject, d.body);
       else if (provider === 'mailjet' && process.env.MAILJET_API_KEY && process.env.MAILJET_API_SECRET) r = await sendMailjet(d.to, d.subject, d.body);
       else if (provider === 'resend' && process.env.RESEND_API_KEY) r = await sendResend(d.to, d.subject, d.body);
       else if (provider === 'smtp2go' && process.env.SMTP2GO_API_KEY) r = await sendSmtp2go(d.to, d.subject, d.body);
