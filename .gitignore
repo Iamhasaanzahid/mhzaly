@@ -8,3 +8,6 @@ dist/
 
 # local automation output (contains mailbox credentials)
 automaton-outbox/
+
+# mail credentials (never commit)
+*mhzaly-gmail.env
