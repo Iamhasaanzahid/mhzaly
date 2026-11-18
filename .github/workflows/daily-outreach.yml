@@ -36,6 +36,17 @@ jobs:
           OUTREACH_INTL_CAP: '10'
         run: node tools/cloud-run.mjs --send
 
+      - name: Record STOP replies and bounces
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          MHZALY_API_URL: https://mhzaly-api.mhzaly.workers.dev
+          MHZALY_API_KEY: ${{ secrets.MHZALY_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python3 tools/cloud-inbox.py
+
       - name: Summary
         if: always()
         run: echo "mhzaly daily outreach finished at $(date -u)"

@@ -354,8 +354,16 @@ if (collected.length) {
 const statsBefore = await api('/api/automaton/outreach/stats');
 console.log('Queue before:', JSON.stringify(statsBefore));
 
-const pk = await sendChannel('email-pk', PK_CAP);
-const intl = await sendChannel('email-intl', INTL_CAP);
+// Enforce the daily cap cloud-side, even if the job runs more than once.
+const usedFor = (ch) => Number((statsBefore.channels || []).find((c) => c.channel === ch)?.sent_today || 0);
+const totalUsed = Number(statsBefore.sent_today || 0);
+const globalLeft = Math.max(0, 20 - totalUsed);
+const pkCap = Math.max(0, Math.min(PK_CAP - usedFor('email-pk'), globalLeft));
+const intlCap = Math.max(0, Math.min(INTL_CAP - usedFor('email-intl'), globalLeft - pkCap));
+console.log(`Daily caps: pk=${pkCap} intl=${intlCap} (already sent today: ${totalUsed})`);
+
+const pk = await sendChannel('email-pk', pkCap);
+const intl = await sendChannel('email-intl', intlCap);
 
 const statsAfter = await api('/api/automaton/outreach/stats');
 console.log(JSON.stringify({ mode: DRY ? 'dry' : 'send', pk, intl, statsBefore, statsAfter }, null, 2));

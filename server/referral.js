@@ -2325,6 +2325,106 @@ export function createReferral(deps) {
     });
   }
 
+  async function handleAutomatonOutreachImport(request, env) {
+    await authAutomaton(request, env);
+    const body = await readJson(request, 500000);
+    const rows = Array.isArray(body.leads) ? body.leads.slice(0, 3000) : [];
+    const clean = [];
+    const seen = new Set();
+    for (const r of rows) {
+      const email = String(r?.email || '').toLowerCase().trim();
+      if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email) || seen.has(email)) continue;
+      seen.add(email);
+      clean.push({
+        email,
+        name: String(r?.name || '').slice(0, 120),
+        country: String(r?.country || '').slice(0, 60),
+        city: String(r?.city || '').slice(0, 80),
+        shop: String(r?.shop || '').slice(0, 80),
+        source: String(r?.source || 'osm').slice(0, 40),
+        channel: String(r?.channel || 'email-pk').slice(0, 20),
+      });
+    }
+    if (!clean.length) return json({ imported: 0 });
+    const now = new Date().toISOString();
+    const stmts = clean.map((r) =>
+      env.DB.prepare(
+        `INSERT INTO outreach_leads (email, name, country, city, shop, source, channel, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(email) DO UPDATE SET
+           name = excluded.name, country = excluded.country, city = excluded.city,
+           shop = excluded.shop, source = excluded.source, channel = excluded.channel`
+      ).bind(r.email, r.name, r.country, r.city, r.shop, r.source, r.channel, now)
+    );
+    await env.DB.batch(stmts);
+    return json({ imported: clean.length });
+  }
+
+  async function handleAutomatonOutreachQueue(request, env) {
+    await authAutomaton(request, env);
+    const url = new URL(request.url);
+    const channel = String(url.searchParams.get('channel') || 'email-pk').slice(0, 20);
+    const limit = Math.max(1, Math.min(50, num(url.searchParams.get('limit'), 20)));
+    const { results } = await env.DB.prepare(
+      `SELECT l.email, l.name, l.country, l.city, l.shop, l.source
+       FROM outreach_leads l
+       LEFT JOIN outreach_sent s ON lower(s.email) = lower(l.email)
+       WHERE s.email IS NULL AND l.channel = ?
+       ORDER BY l.created_at ASC, l.email ASC
+       LIMIT ?`
+    ).bind(channel, limit).all();
+    return json({ channel, leads: results || [] });
+  }
+
+  async function handleAutomatonOutreachMark(request, env) {
+    await authAutomaton(request, env);
+    const body = await readJson(request);
+    const email = String(body.email || '').toLowerCase().trim();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) throw new HttpError(400, 'valid email required');
+    const channel = String(body.channel || 'email-pk').slice(0, 20);
+    await env.DB.prepare(
+      `INSERT INTO outreach_sent (email, channel, sent_at, lead_name, status)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         channel = excluded.channel, sent_at = excluded.sent_at,
+         lead_name = excluded.lead_name, status = excluded.status`
+    ).bind(email, channel, new Date().toISOString(), String(body.name || '').slice(0, 120), String(body.status || 'sent').slice(0, 20)).run();
+    return json({ ok: true, email });
+  }
+
+  async function handleAutomatonOutreachStatus(request, env) {
+    await authAutomaton(request, env);
+    const body = await readJson(request);
+    const email = String(body.email || '').toLowerCase().trim();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) throw new HttpError(400, 'valid email required');
+    const status = String(body.status || 'stop').slice(0, 20);
+    await env.DB.prepare(
+      `INSERT INTO outreach_sent (email, channel, sent_at, lead_name, status)
+       VALUES (?, 'email', ?, '', ?)
+       ON CONFLICT(email) DO UPDATE SET status = excluded.status`
+    ).bind(email, new Date().toISOString(), status).run();
+    return json({ ok: true, email, status });
+  }
+
+  async function handleAutomatonOutreachStats(request, env) {
+    await authAutomaton(request, env);
+    const today = new Date().toISOString().slice(0, 10);
+    const total = await env.DB.prepare('SELECT COUNT(*) AS n FROM outreach_leads').first();
+    const sent = await env.DB.prepare('SELECT COUNT(*) AS n FROM outreach_sent').first();
+    const sentToday = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM outreach_sent WHERE status = 'sent' AND substr(sent_at, 1, 10) = ?"
+    ).bind(today).first();
+    const byChannel = await env.DB.prepare(
+      `SELECT l.channel, COUNT(*) AS total,
+         SUM(CASE WHEN s.email IS NULL THEN 1 ELSE 0 END) AS remaining,
+         SUM(CASE WHEN s.status = 'sent' AND substr(s.sent_at, 1, 10) = ? THEN 1 ELSE 0 END) AS sent_today
+       FROM outreach_leads l
+       LEFT JOIN outreach_sent s ON lower(s.email) = lower(l.email)
+       GROUP BY l.channel`
+    ).bind(today).all();
+    return json({ leads: total?.n || 0, sent: sent?.n || 0, sent_today: sentToday?.n || 0, date: today, channels: byChannel.results || [] });
+  }
+
   async function handleAutomatonStats(request, env) {
     const auto = await authAutomaton(request, env);
     const rows = await env.DB.prepare(
@@ -2767,6 +2867,21 @@ export function createReferral(deps) {
     }
     if (path === '/api/automaton/ai' && method === 'POST') {
       return handleAutomatonAi(request, env);
+    }
+    if (path === '/api/automaton/outreach/import' && method === 'POST') {
+      return handleAutomatonOutreachImport(request, env);
+    }
+    if (path === '/api/automaton/outreach/queue' && method === 'GET') {
+      return handleAutomatonOutreachQueue(request, env);
+    }
+    if (path === '/api/automaton/outreach/mark' && method === 'POST') {
+      return handleAutomatonOutreachMark(request, env);
+    }
+    if (path === '/api/automaton/outreach/status' && method === 'POST') {
+      return handleAutomatonOutreachStatus(request, env);
+    }
+    if (path === '/api/automaton/outreach/stats' && method === 'GET') {
+      return handleAutomatonOutreachStats(request, env);
     }
     if (path === '/v1/chat/completions' && method === 'POST') {
       return handleAutomatonChatCompletions(request, env);
