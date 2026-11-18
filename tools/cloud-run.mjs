@@ -34,6 +34,14 @@ const DRY = !SEND;
 if (!KEY) { console.error('MHZALY_API_KEY missing'); process.exit(1); }
 if (!DRY && (!USER || !PASS)) { console.error('Gmail credentials missing'); process.exit(1); }
 
+// One-off SMTP check: send a single message to the owner's own address.
+if (process.argv.includes('--test-smtp')) {
+  if (!USER || !PASS) { console.error('Gmail credentials missing'); process.exit(1); }
+  sendMail(USER, 'mhzaly cloud SMTP test', 'This is a one-off test from GitHub Actions. If you received it, cloud email sending works.');
+  console.log('SMTP test email sent to owner');
+  process.exit(0);
+}
+
 // ── Cloud API ────────────────────────────────────────────────
 async function api(pathname, method = 'GET', body = null) {
   const res = await fetch(API + pathname, {
