@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 
 USER = os.environ.get("GMAIL_USER", "")
@@ -36,6 +37,16 @@ def set_status(address: str, status: str) -> None:
     )
     with urllib.request.urlopen(req, timeout=30) as res:
         res.read()
+
+
+def known_emails() -> set:
+    req = urllib.request.Request(
+        API + "/api/automaton/outreach/known",
+        headers={"X-Api-Key": KEY, "User-Agent": "mhzaly-automaton/1.0"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as res:
+        data = json.loads(res.read().decode())
+    return {str(item).lower() for item in data.get("emails", [])}
 
 
 def body_text(msg) -> str:
@@ -90,11 +101,13 @@ def main() -> None:
     client = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=30)
     client.login(USER, PASSWORD)
     client.select("INBOX")
-    typ, data = client.search(None, "UNSEEN")
-    ids = data[0].split()[-60:] if typ == "OK" and data and data[0] else []
+    since = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%d-%b-%Y")
+    typ, data = client.search(None, f"SINCE {since}")
+    ids = data[0].split()[-80:] if typ == "OK" and data and data[0] else []
 
     stops = []
     bounces = []
+    known = known_emails()
     for msg_id in ids:
         typ, fetched = client.fetch(msg_id, "(RFC822)")
         if typ != "OK" or not fetched or not fetched[0]:
@@ -107,23 +120,18 @@ def main() -> None:
         if is_bounce(sender, subject):
             for found in set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", body)):
                 found = found.lower().strip(".")
-                if found != USER.lower() and "mailer-daemon" not in found:
+                if found != USER.lower() and found in known:
                     try:
                         set_status(found, "bounce")
                         bounces.append(found)
                     except Exception:
                         pass
-        elif sender and sender != USER.lower() and is_stop(subject, body):
+        elif sender in known and sender != USER.lower() and is_stop(subject, body):
             try:
                 set_status(sender, "stop")
                 stops.append(sender)
             except Exception:
                 pass
-
-        try:
-            client.store(msg_id, "+FLAGS", "\\Seen")
-        except Exception:
-            pass
 
     client.logout()
     def mask(address: str) -> str:
