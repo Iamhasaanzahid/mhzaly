@@ -96,9 +96,11 @@ const CITIES = [
 ];
 
 const MIRRORS = [
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
 ];
 const SHOP_TYPES = 'mobile|electronics|computer|hardware|variety|general|department_store|telecommunication';
 
