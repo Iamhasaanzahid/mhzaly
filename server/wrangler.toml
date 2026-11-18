@@ -7,5 +7,8 @@ binding = "DB"
 database_name = "mhzaly"
 database_id = "06c91f98-c054-460a-9278-53d12bc1aaf3"
 
+[ai]
+binding = "AI"
+
 [triggers]
 crons = ["0 * * * *"]

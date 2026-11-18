@@ -2135,6 +2135,54 @@ export function createReferral(deps) {
 
   /* ---------------- automaton API ---------------- */
 
+  async function handleAutomatonAi(request, env) {
+    const auto = await authAutomaton(request, env);
+    const body = await readJson(request);
+    const prompt = text(body.prompt, 4000);
+    if (!prompt) throw new HttpError(400, 'prompt required');
+    if (!env.AI || typeof env.AI.run !== 'function') {
+      throw new HttpError(503, 'AI binding not configured');
+    }
+    const maxTokens = Math.max(32, Math.min(320, num(body.maxTokens, 180)));
+    const models = [
+      '@cf/meta/llama-3.2-3b-instruct',
+      '@cf/meta/llama-3.1-8b-instruct-fast',
+      '@cf/meta/llama-3.1-8b-instruct',
+      '@cf/meta/llama-3-8b-instruct',
+    ];
+    let out = null;
+    let used = '';
+    let lastError = '';
+    for (const model of models) {
+      try {
+        out = await env.AI.run(model, {
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You write short, honest, professional outreach messages for a shop-management SaaS. ' +
+                'Use only the facts given. Never invent claims. Plain text, no markdown.',
+            },
+            { role: 'user', content: prompt },
+          ],
+          max_tokens: maxTokens,
+          temperature: 0.4,
+        });
+        used = model;
+        if (String(out?.response || '').trim()) break;
+      } catch (e) {
+        lastError = String(e?.message || e || 'unknown');
+      }
+    }
+    if (!out) throw new HttpError(502, `AI generation failed: ${lastError.slice(0, 120)}`);
+    return json({
+      ok: true,
+      text: String(out?.response || '').trim(),
+      model: used,
+      automaton: auto.name,
+    });
+  }
+
   async function handleAutomatonStats(request, env) {
     const auto = await authAutomaton(request, env);
     const rows = await env.DB.prepare(
@@ -2574,6 +2622,9 @@ export function createReferral(deps) {
 
     if (path === '/api/automaton/me/stats' && method === 'GET') {
       return handleAutomatonStats(request, env);
+    }
+    if (path === '/api/automaton/ai' && method === 'POST') {
+      return handleAutomatonAi(request, env);
     }
     if (path === '/api/automaton/quotes' && method === 'POST') {
       return handleAutomatonQuote(request, env);
