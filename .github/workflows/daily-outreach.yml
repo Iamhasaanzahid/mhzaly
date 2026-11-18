@@ -1,0 +1,41 @@
+name: mhzaly daily outreach
+
+on:
+  schedule:
+    # 04:00 UTC = 09:00 Pakistan time, every day
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mhzaly-daily-outreach
+  cancel-in-progress: false
+
+jobs:
+  outreach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Collect leads, import to D1, send capped emails
+        env:
+          MHZALY_API_URL: https://mhzaly-api.mhzaly.workers.dev
+          MHZALY_API_KEY: ${{ secrets.MHZALY_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          OUTREACH_PK_CAP: '10'
+          OUTREACH_INTL_CAP: '10'
+        run: node tools/cloud-run.mjs --send
+
+      - name: Summary
+        if: always()
+        run: echo "mhzaly daily outreach finished at $(date -u)"
