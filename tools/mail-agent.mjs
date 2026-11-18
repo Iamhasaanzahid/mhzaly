@@ -95,10 +95,15 @@ export function generateMailAgent(outDir, { publicMode = false } = {}) {
   const leads = readLeads();
   const emails = leads.filter((x) => x.email && /@/.test(x.email));
   const auto = automatonMessages();
-  const mail = emails.map((x) => ({
-    to: x.email,
-    url: mailUrl(x, auto.map.get(String(x.name || '').toLowerCase())),
-  }));
+  const mail = emails.map((x) => {
+    const override = auto.map.get(String(x.name || '').toLowerCase());
+    return {
+      to: x.email,
+      name: x.name || 'bhai',
+      body: override || `Assalam o Alaikum ${x.name || 'bhai'},\n\nMain mhzaly — dukan management software — ke bare mein baat karna cha raha tha.\nInventory, sales, customer khata, repair jobs aur profit report ek hi jagah.\n\n1 din ka FREE demo yahan se shuru karein:\n${SITE}#/login\n\nSign up karte hi main aapki setup mein madad karunga. Agar interested na hain to\nbas "stop" reply kar dein — dobara message nahi karunga.\n\nShukriya!`,
+      url: mailUrl(x, override),
+    };
+  });
   fs.mkdirSync(outDir, { recursive: true });
 
   // CSV — all real outreach leads (OSM business listings), with actions.
@@ -114,8 +119,9 @@ export function generateMailAgent(outDir, { publicMode = false } = {}) {
     const x = emails[i];
     return `<div class="row" data-i="${i}">
       <div class="who"><b>${esc(x.name || 'bhai')}</b><span>${esc(x.shop || '')} · ${esc(x.area || '')}</span><a href="${esc(m.url)}">${esc(m.to)}</a></div>
-      <button class="send" onclick="openMail(${i})">Mail kholein</button>
-      <button class="done" onclick="mark(${i})">Ho gaya</button>
+      <a class="send" href="${esc(m.url)}" data-i="${i}" data-act="mail">Mail kholein</a>
+      <button class="copy" data-i="${i}" data-act="copy">Copy</button>
+      <button class="done" data-i="${i}" data-act="done">Ho gaya</button>
     </div>`;
   }).join('');
 
@@ -127,11 +133,13 @@ h1{margin:0 0 4px;font-size:22px}.sub{color:var(--dim);font-size:13px;margin:0 0
 .row{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .row:last-child{border:0}.who{flex:1;min-width:0}.who b{display:block}.who span{display:block;color:var(--dim);font-size:12px}
 .who a{color:var(--ac);font-size:13px;text-decoration:none}
-button{background:var(--ac);color:#04101f;border:0;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer}
+button,.send{background:var(--ac);color:#04101f;border:0;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;font-size:14px}
+.copy{background:#0e7490;color:#e8faff}
 .done{background:transparent;color:var(--dim);border:1px solid var(--line)}
 .row.sent{opacity:.35}.row.sent .who a{text-decoration:line-through}
 .stat{color:var(--ok);font-size:13px;margin:8px 0}
 .dl{display:inline-block;background:var(--ok);color:#041a12;padding:9px 14px;border-radius:8px;text-decoration:none;font-weight:700}
+#msgbox{display:none;margin-top:10px}#msgbox textarea{width:100%;height:170px;background:#0a1424;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font:13px system-ui}
 `;
 
   const logic = (dataVar) => `
@@ -140,8 +148,18 @@ let sent=new Set(JSON.parse(localStorage.getItem(KEY)||'[]'));
 function save(){localStorage.setItem(KEY,JSON.stringify([...sent]))}
 function draw(){document.querySelectorAll('.row').forEach(r=>r.classList.toggle('sent',sent.has(+r.dataset.i)));
  document.getElementById('stat').textContent=sent.size+' / '+Math.min(${CAP},MAIL.length)+' aaj bheje gaye · '+(MAIL.length-sent.size)+' baaki';}
-function openMail(i){if(sent.size>=${CAP}){alert('Aaj ka cap (${CAP}) ho gaya — kal baaki karlein.');return}window.location.href=MAIL[i].url}
-function mark(i){sent.add(i);save();draw()}
+function copyMsg(i){const b=document.getElementById('msgbox');b.style.display='block';
+ const t=document.getElementById('msgtext');t.value=MAIL[i].body;t.focus();t.select();
+ document.getElementById('msgtitle').textContent='Message for '+MAIL[i].name+' — copy karein ya Gmail/Outlook mein paste karein';
+ if(navigator.clipboard)navigator.clipboard.writeText(MAIL[i].body).catch(()=>{});}
+function mark(i){if(sent.size>=${CAP}){alert('Aaj ka cap (${CAP}) ho gaya — kal baaki karlein.');return}sent.add(i);save();draw()}
+document.addEventListener('click',function(e){
+ const el=e.target.closest('[data-act]');if(!el)return;
+ const i=+el.dataset.i;
+ if(el.dataset.act==='mail'){e.preventDefault();if(sent.size>=${CAP}){alert('Aaj ka cap (${CAP}) ho gaya — kal baaki karlein.');return}window.open(MAIL[i].url,'_blank');}
+ else if(el.dataset.act==='copy'){copyMsg(i);}
+ else if(el.dataset.act==='done'){mark(i);}
+});
 draw();`;
 
   const bodyHtml = `<h1>mhzaly — Mail Agent ✅</h1>
@@ -149,6 +167,8 @@ draw();`;
 <div class="card"><p class="stat" id="stat"></p>
 <p class="sub">"Mail kholein" dabayein — aapke mail app mein message tayyar hoga, <b>Send dabana zaroori hai</b>. Message bhejne ke baad "Ho gaya" dabayein.</p>
 <p><a class="dl" href="mail-agent-leads.csv" download="mhzaly-outreach-leads.csv">⬇ CSV download (${leads.length} leads)</a></p></div>
+<div class="card" id="msgbox"><b id="msgtitle">Message</b><textarea id="msgtext" readonly></textarea>
+<p class="sub">Agar "Mail kholein" se mail app na khule to ye text copy karke Gmail/Outlook mein naya email bana kar paste kar dein.</p></div>
 <div class="card" id="rows">${rows || '<p class="sub">Koi email lead nahi mila.</p>'}</div>`;
 
   const dataJson = JSON.stringify(mail);
