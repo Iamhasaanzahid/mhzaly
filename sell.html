@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mhzaly — Shop Management Software for Mobile & Retail Shops in Pakistan</title>
+  <meta name="description" content="mhzaly is a simple shop management software for mobile shops, marts, pharmacies and general stores. Track inventory, sales, customers, repairs, suppliers, expenses and profit — in Urdu and English. JazzCash, Western Union, Meezan and card payments accepted." />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="canonical" href="https://mhzaly.pages.dev/sell" />
+  <link rel="icon" href="./icon.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="mhzaly — Shop Management Software for Pakistan" />
+  <meta property="og:description" content="Inventory, sales, khata, repairs, suppliers, expenses and profit reports in one simple app. Start on WhatsApp." />
+  <meta property="og:url" content="https://mhzaly.pages.dev/sell" />
+  <style>
+    :root{--navy:#0f172a;--navy2:#1e293b;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--card:#fff;--brand:#2563eb;--brand2:#1d4ed8;--green:#16a34a;--gold:#d97706}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+    a{color:inherit}
+    .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+    header{background:var(--navy);color:#fff;padding:14px 0;position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(255,255,255,.08)}
+    header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .logo{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.02em;font-size:20px;text-decoration:none}
+    .logo span{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);font-size:16px}
+    nav a{color:#cbd5e1;text-decoration:none;margin-left:18px;font-size:14px}
+    nav a:hover{color:#fff}
+    .hero{background:radial-gradient(1200px 500px at 20% -10%,#1e3a8a 0%,transparent 60%),linear-gradient(160deg,#0f172a 0%,#111c33 60%,#0b1220 100%);color:#fff;padding:72px 0 64px}
+    .hero h1{font-size:clamp(30px,5vw,52px);line-height:1.1;margin:0 0 16px;letter-spacing:-.03em;max-width:820px}
+    .hero h1 em{font-style:normal;color:#93c5fd}
+    .hero p{color:#cbd5e1;font-size:clamp(16px,2vw,19px);max-width:680px;margin:0 0 28px}
+    .cta{display:flex;flex-wrap:wrap;gap:12px}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;border:1px solid transparent;transition:.15s}
+    .btn:hover{transform:translateY(-1px)}
+    .btn-wa{background:#25d366;color:#062b14}
+    .btn-primary{background:var(--brand);color:#fff}
+    .btn-ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.2)}
+    .btn-outline{background:#fff;color:var(--navy);border-color:var(--line)}
+    .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+    .badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#dbeafe;padding:6px 10px;border-radius:999px;font-size:12.5px}
+    section{padding:64px 0}
+    h2{font-size:clamp(24px,3.2vw,34px);letter-spacing:-.02em;margin:0 0 10px}
+    .sub{color:var(--muted);max-width:720px;margin:0 0 30px}
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+    .card h3{margin:0 0 6px;font-size:17px}
+    .card p{margin:0;color:var(--muted);font-size:14.5px}
+    .ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:#eff6ff;color:var(--brand);font-size:19px;margin-bottom:12px}
+    .plans{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+    .plan{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;flex-direction:column}
+    .plan.featured{border-color:#bfdbfe;box-shadow:0 12px 30px rgba(37,99,235,.12)}
+    .plan .tag{font-size:12px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.08em}
+    .plan .price{font-size:28px;font-weight:800;margin:8px 0 2px;letter-spacing:-.02em}
+    .plan .price small{font-size:14px;font-weight:600;color:var(--muted)}
+    .plan ul{padding-left:18px;color:var(--muted);font-size:14px;margin:12px 0 18px}
+    .plan .btn{margin-top:auto;justify-content:center}
+    .note{font-size:12.5px;color:var(--muted);margin-top:6px}
+    .steps{counter-reset:s;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+    .step{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
+    .step:before{counter-increment:s;content:counter(s);display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;font-size:13px;margin-bottom:10px}
+    .step h3{margin:0 0 4px;font-size:16px}
+    .step p{margin:0;color:var(--muted);font-size:14px}
+    .pay{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+    .pay span{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13.5px;font-weight:600}
+    .faq{display:grid;gap:10px}
+    details{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+    summary{cursor:pointer;font-weight:700}
+    details p{color:var(--muted);margin:8px 0 0;font-size:14.5px}
+    .band{background:var(--navy);color:#fff;border-radius:18px;padding:34px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px}
+    .band h2{margin:0 0 6px}
+    .band p{margin:0;color:#cbd5e1}
+    footer{background:#0b1220;color:#94a3b8;padding:34px 0;font-size:13.5px}
+    footer a{color:#cbd5e1;text-decoration:none;margin-right:16px}
+    @media(max-width:640px){nav{display:none}.hero{padding:52px 0 44px}section{padding:48px 0}.band{padding:24px}}
+  </style>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "mhzaly",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "url": "https://mhzaly.pages.dev/sell",
+    "description": "Shop management software for mobile shops, marts, pharmacies and general stores in Pakistan. Inventory, sales, customers, repairs, suppliers, expenses and profit reports.",
+    "offers": {
+      "@type": "AggregateOffer",
+      "priceCurrency": "PKR",
+      "lowPrice": "0",
+      "highPrice": "2000",
+      "offerCount": "4"
+    },
+    "areaServed": ["PK", "US", "GB", "CA", "AU", "AE", "SA"]
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="logo" href="./"><span>m</span> mhzaly</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#how">How it works</a>
+        <a href="#faq">FAQ</a>
+        <a href="./?ref=proof-agent#/login">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <h1>Apni dukaan ka poora hisaab, <em>ek simple app</em> mein.</h1>
+        <p>mhzaly mobile shops, marts, pharmacies aur general stores ke liye shop management software hai. Inventory, sales, customer khata, repair jobs, suppliers, expenses aur profit — sab kuch Urdu aur English mein.</p>
+        <div class="cta">
+          <a class="btn btn-wa" href="https://wa.me/923321141889?text=Assalam%20o%20Alaikum%2C%20mujhe%20mhzaly%20shop%20software%20ke%20baare%20mein%20maloom%20karna%20hai." target="_blank" rel="noopener">WhatsApp par baat karein</a>
+          <a class="btn btn-primary" href="./?ref=proof-agent#/login">Free demo shuru karein</a>
+          <a class="btn btn-ghost" href="mailto:mhzcyb@gmail.com?subject=mhzaly%20shop%20software%20inquiry">Email karein</a>
+        </div>
+        <div class="badges">
+          <span class="badge">✅ Urdu + English</span>
+          <span class="badge">✅ PKR + USD</span>
+          <span class="badge">✅ JazzCash / Meezan / Western Union</span>
+          <span class="badge">✅ Mobile, mart, pharmacy, general store</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>Dukaan chalane ke liye jo chahiye — sab ek jagah</h2>
+        <p class="sub">Alag alag registers, Excel sheets aur yaad rakhne ki zaroorat nahi. mhzaly roz ka kaam asaan karta hai.</p>
+        <div class="grid">
+          <div class="card"><div class="ico">📦</div><h3>Inventory & stock</h3><p>Har product ka stock, low-stock alert, purchase aur restock — mobile shop ho ya general store.</p></div>
+          <div class="card"><div class="ico">🧾</div><h3>POS billing</h3><p>Fast bill, print/share receipt, discount, tax aur multiple payment methods.</p></div>
+          <div class="card"><div class="ico">👥</div><h3>Customer khata</h3><p>Udhaar, wasooli, customer history aur balance — sab record mein.</p></div>
+          <div class="card"><div class="ico">🔧</div><h3>Repair jobs</h3><p>Mobile repair tickets, status, parts cost aur customer ko update.</p></div>
+          <div class="card"><div class="ico">🚚</div><h3>Suppliers & purchases</h3><p>Supplier ledger, purchase orders aur payable balance.</p></div>
+          <div class="card"><div class="ico">📊</div><h3>Profit reports</h3><p>Roz, hafta aur mahine ki sale, expense aur profit — saaf report.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" style="background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+      <div class="wrap">
+        <h2>Simple plans</h2>
+        <p class="sub">Pakistan aur baaki countries ke liye monthly, quarterly aur annual plans. Lifetime plan sirf major countries ke liye.</p>
+        <div class="plans">
+          <div class="plan">
+            <div class="tag">Monthly</div>
+            <div class="price">Current rate <small>WhatsApp</small></div>
+            <ul><li>Poora shop manager</li><li>Inventory, sales, khata</li><li>Repair jobs & suppliers</li><li>Email/WhatsApp support</li></ul>
+            <a class="btn btn-outline" href="https://wa.me/923321141889?text= mujhe%20mhzaly%20monthly%20plan%20ka%20rate%20chahiye" target="_blank" rel="noopener">Rate poochein</a>
+          </div>
+          <div class="plan featured">
+            <div class="tag">Annual</div>
+            <div class="price">Best value <small>WhatsApp</small></div>
+            <ul><li>Monthly plan ke saath</li><li>12 mahine ki continuity</li><li>Priority support</li><li>Free setup help</li></ul>
+            <a class="btn btn-primary" href="https://wa.me/923321141889?text=mujhe%20mhzaly%20annual%20plan%20ka%20rate%20chahiye" target="_blank" rel="noopener">Annual rate lein</a>
+          </div>
+          <div class="plan">
+            <div class="tag">Lifetime</div>
+            <div class="price">$2000 <small>USD</small></div>
+            <ul><li>Sirf major countries (US, UK, Canada, Australia, EU, Gulf)</li><li>One-time payment</li><li>Lifetime access</li><li>Pakistan mein lifetime available nahi</li></ul>
+            <a class="btn btn-outline" href="mailto:mhzcyb@gmail.com?subject=mhzaly%20lifetime%20plan%20%242000">Lifetime inquiry</a>
+          </div>
+        </div>
+        <p class="note">Pakistan ke liye lifetime plan nahi hai — monthly, quarterly ya annual plan lein. Exact current pricing WhatsApp par confirm karein.</p>
+        <div class="pay">
+          <span>JazzCash</span><span>Western Union</span><span>Meezan Bank</span><span>Stripe / Card</span>
+        </div>
+        <p class="note">Payment ke baad receipt upload karein — owner verify karke account activate karta hai.</p>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2>Kaise shuru karein</h2>
+        <p class="sub">Teen simple steps — 1 din ka demo bhi available hai.</p>
+        <div class="steps">
+          <div class="step"><h3>WhatsApp ya signup</h3><p>WhatsApp par baat karein ya website se demo account banayein.</p></div>
+          <div class="step"><h3>Plan choose karein</h3><p>Monthly, quarterly ya annual — apni dukaan ke hisaab se.</p></div>
+          <div class="step"><h3>Payment + activation</h3><p>JazzCash, Meezan, Western Union ya card se pay karein. Receipt verify hone par account active.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" style="background:#fff;border-top:1px solid var(--line)">
+      <div class="wrap">
+        <h2>Common sawal</h2>
+        <div class="faq">
+          <details><summary>Kya mhzaly mobile shop ke liye hai?</summary><p>Haan. Mobile phones, accessories, repair jobs, IMEI notes, supplier ledger aur customer khata — sab handle karta hai. Mart, pharmacy aur general store bhi use kar sakte hain.</p></details>
+          <details><summary>Urdu mein use kar sakte hain?</summary><p>Haan, poori app Urdu aur English dono mein hai.</p></details>
+          <details><summary>Payment kaise karein?</summary><p>Pakistan mein JazzCash, Meezan Bank ya Western Union. International customers card/Stripe use kar sakte hain. Payment ke baad receipt upload karein.</p></details>
+          <details><summary>Lifetime plan Pakistan mein kyun nahi?</summary><p>Lifetime plan sirf major countries (US, UK, Canada, Australia, EU, Gulf) ke liye $2000 USD hai. Pakistan mein monthly, quarterly aur annual plans available hain.</p></details>
+          <details><summary>Demo hai?</summary><p>Haan, 1 din ka demo account mil sakta hai. WhatsApp par "demo" likh kar message karein.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="band">
+          <div>
+            <h2>Aaj hi apni dukaan smart banayein</h2>
+            <p>WhatsApp par message karein — rate, demo aur payment details turant.</p>
+          </div>
+          <div class="cta">
+            <a class="btn btn-wa" href="https://wa.me/923321141889?text=Assalam%20o%20Alaikum%2C%20mujhe%20mhzaly%20ka%20demo%20chahiye." target="_blank" rel="noopener">WhatsApp: 0332 1141889</a>
+            <a class="btn btn-ghost" href="./?ref=proof-agent#/login">Website par signup</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div style="margin-bottom:10px"><strong style="color:#fff">mhzaly</strong> — shop management software for Pakistan.</div>
+      <a href="./">Home</a><a href="./sell">Plans</a><a href="mailto:mhzcyb@gmail.com">Email</a><a href="https://wa.me/923321141889" target="_blank" rel="noopener">WhatsApp</a>
+      <div style="margin-top:12px">© 2026 mhzaly. All prices confirmed on WhatsApp before payment.</div>
+    </div>
+  </footer>
+</body>
+</html>

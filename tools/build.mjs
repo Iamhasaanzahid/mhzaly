@@ -42,6 +42,7 @@ const FILES = [
   'owner.html',
   'verify.html',
   '404.html',
+  'sell.html',
   'icon.svg',
   'manifest.json',
   'sw.js',
@@ -51,7 +52,7 @@ const FILES = [
   '_redirects',
 ];
 
-const DIRS = ['css', 'js', 'functions'];
+const DIRS = ['css', 'js', 'functions', 'blog'];
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });
@@ -79,7 +80,7 @@ if (fs.existsSync(wellKnown)) {
 
 /* ---------- version the HTML asset references ---------- */
 const VERSIONABLE = /^\.\/(js\/|css\/|icon\.svg$|manifest\.json$)/;
-for (const file of ['index.html', 'owner.html', 'verify.html', '404.html']) {
+for (const file of ['index.html', 'owner.html', 'verify.html', '404.html', 'sell.html']) {
   const target = path.join(dist, file);
   let html = fs.readFileSync(target, 'utf8');
   html = html.replace(/(src|href)="([^"]+)"/g, (match, attr, url) => {
