@@ -134,7 +134,7 @@ code{color:#8fd6ff}
 </style></head><body>
 <h1>mhzaly — WhatsApp Agent 🤖</h1>
 <p class="sub">${DAY} · Agent number: <b>${WA_DISPLAY}</b> · ${queue.length} real leads (OpenStreetMap) · daily cap ${CAP} · offline, no keys.</p>
-<div class="tabs"><button class="on" data-tab="chat">Chat Agent</button><button data-tab="leads">Outreach (${queue.length})</button><button data-tab="log">Log</button></div>
+<div class="tabs"><button class="on" data-tab="chat">Chat Agent</button><button data-tab="leads">Outreach (${queue.length})</button><button data-tab="auto">Auto DM</button><button data-tab="log">Log</button></div>
 
 <section class="panel on" id="chat">
   <p class="sub">Customer ka message neeche paste karein — agent khud intent detect karke reply tayyar karega. Copy karke WhatsApp par bhej dein.</p>
@@ -148,6 +148,20 @@ code{color:#8fd6ff}
   <div class="bar"><b id="stat">0 / ${CAP} aaj bheje</b><button class="reset" id="reset">Reset progress</button></div>
   <p class="sub">Green WhatsApp button seedha us dukan par chat kholta hai (aapke ${WA_DISPLAY} se). "Follow-up" quiet lead ke liye gentle reminder draft karta hai.</p>
   <div id="list">${rows}</div>
+</section>
+
+<section class="panel" id="auto">
+  <p class="sub">Agent khud agla lead chunta hai, message ready karta hai, aur WhatsApp kholta hai. Aap bas <b>Send</b> dabayein — agent delay ke baad agle par chala jayega. Har 15vein message ke baad extra break.</p>
+  <div class="card">
+    <div class="row" style="margin:0 0 10px">
+      <button id="autostart">▶ Auto DM shuru karein</button>
+      <button class="alt" id="autostop">⏹ Rokein</button>
+    </div>
+    <label style="font-size:13px;color:var(--dim)">Delay per lead (seconds): <input id="delay" type="number" value="20" min="8" max="120" style="width:80px;display:inline-block;padding:6px"></label>
+    <p class="stat" id="autostat">Ready — ${queue.filter(x=>x.phone).length} leads with WhatsApp numbers.</p>
+    <div class="out" id="autocurrent" style="display:none"><span class="intent" id="autointent"></span><div id="autotext"></div></div>
+  </div>
+  <p class="stat">⚠️ WhatsApp personal number par 100% bot nahi chal sakta (Meta ban risk). Ye <b>half-auto</b> hai: agent sab kuch tayyar karta hai, aap sirf final Send kartein hain. Isi liye number safe rehta hai.</p>
 </section>
 
 <section class="panel" id="log">
@@ -173,6 +187,32 @@ document.querySelectorAll('[data-follow]').forEach(b=>b.onclick=()=>{const i=b.d
 document.querySelectorAll('[data-stage]').forEach(s=>{s.value=state.stages[s.dataset.stage]||'new';s.onchange=()=>{state.stages[s.dataset.stage]=s.value;save();log('Stage: '+s.value+' #'+(Number(s.dataset.stage)+1))}});
 document.getElementById('reset').onclick=()=>{localStorage.removeItem(KEY);location.reload()};
 function sync(){document.querySelectorAll('[data-stage]').forEach(s=>{s.value=state.stages[s.dataset.stage]||'new'})}
+
+/* ---- Auto DM runner: prepares + opens each chat, human taps Send ---- */
+let autoTimer=null, autoIndex=0, autoRunning=false;
+const waLeads=${JSON.stringify(queue.map((x,i)=>({i,name:x.name,wa:x.wa})).filter(x=>x.wa))};
+function autoMsg(name){return 'Assalam o Alaikum '+name+' — main mhzaly (simple shop software) ke bare mein baat karna cha raha tha. Inventory, sales, customer khata, repair jobs aur profit report ek hi jagah. Aap ki dukan ke liye 1 din ka free demo de sakta hoon. Interested hain to reply karein. Shukriya!'}
+function autoStep(){
+  if(!autoRunning)return;
+  if(state.sent>=${CAP}){document.getElementById('autostat').textContent='Aaj ka cap (${CAP}) pura ho gaya — kal dobara chalayein.';autoRunning=false;return}
+  while(autoIndex<waLeads.length && (state.stages[waLeads[autoIndex].i]==='contacted'||state.stages[waLeads[autoIndex].i]==='replied'||state.stages[waLeads[autoIndex].i]==='demo'||state.stages[waLeads[autoIndex].i]==='trial'||state.stages[waLeads[autoIndex].i]==='paid')) autoIndex++;
+  if(autoIndex>=waLeads.length){document.getElementById('autostat').textContent='Saare leads ho gaye.';autoRunning=false;return}
+  const cur=waLeads[autoIndex];
+  document.getElementById('autointent').textContent='Lead #'+(cur.i+1)+' — '+cur.name;
+  document.getElementById('autotext').textContent=autoMsg(cur.name);
+  document.getElementById('autocurrent').style.display='block';
+  document.getElementById('autostat').textContent='Ready: '+(cur.i+1)+' · '+(state.sent+1)+' / ${CAP} aaj';
+  window.open(cur.wa,'_blank','noopener');
+  state.sent++;state.stages[cur.i]='contacted';save();renderStat();sync();
+  log('Auto DM opened: #'+(cur.i+1)+' '+cur.name);
+  autoIndex++;
+  const base=Math.max(8,Number(document.getElementById('delay').value)||20)*1000;
+  const extra=(state.sent%15===0)?60000:0;
+  document.getElementById('autostat').textContent+=(extra?' · 1 min break':'');
+  autoTimer=setTimeout(autoStep,base+extra);
+}
+document.getElementById('autostart').onclick=()=>{if(autoRunning)return;if(state.sent>=${CAP}){alert('Aaj ka cap ho gaya');return}autoRunning=true;document.getElementById('autostat').textContent='Chal raha hai...';autoStep()};
+document.getElementById('autostop').onclick=()=>{autoRunning=false;clearTimeout(autoTimer);document.getElementById('autostat').textContent='Rok diya gaya.'};
 renderStat();renderLog();sync();
 </script></body></html>`;
 await fs.writeFile(path.join(OUT, 'whatsapp-agent.html'), html);
