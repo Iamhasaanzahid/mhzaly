@@ -114,7 +114,7 @@ let sent=new Set(JSON.parse(localStorage.getItem(KEY)||'[]'));
 function save(){localStorage.setItem(KEY,JSON.stringify([...sent]))}
 function draw(){document.querySelectorAll('.row').forEach(r=>r.classList.toggle('sent',sent.has(+r.dataset.i)));
  document.getElementById('stat').textContent=sent.size+' / '+Math.min(${CAP},MAIL.length)+' aaj bheje gaye · '+(MAIL.length-sent.size)+' baaki';}
-function openMail(i){if(sent.size>=${CAP}){alert('Aaj ka cap (${CAP}) ho gaya — kal baaki karlein.');return}window.location.href=MAIL[i].url;sent.add(i);save();draw()}
+function openMail(i){if(sent.size>=${CAP}){alert('Aaj ka cap (${CAP}) ho gaya — kal baaki karlein.');return}window.location.href=MAIL[i].url}
 function mark(i){sent.add(i);save();draw()}
 draw();
 </script></body></html>`;
