@@ -22,7 +22,8 @@ import { execFileSync } from 'node:child_process';
 const API = (process.env.MHZALY_API_URL || 'https://mhzaly-api.mhzaly.workers.dev').replace(/\/$/, '');
 const KEY = process.env.MHZALY_API_KEY || '';
 const USER = process.env.GMAIL_USER || '';
-const PASS = process.env.GMAIL_APP_PASSWORD || '';
+const PASS = (process.env.GMAIL_APP_PASSWORD || '').trim();
+const SMTP_PASS = PASS.replace(/\s+/g, '');
 const SEND = process.argv.includes('--send');
 const PK_CAP = Math.max(0, parseInt(process.env.OUTREACH_PK_CAP || '10', 10));
 const INTL_CAP = Math.max(0, parseInt(process.env.OUTREACH_INTL_CAP || '10', 10));
@@ -317,7 +318,7 @@ function sendMail(to, subject, body) {
   const tmp = path.join(os.tmpdir(), `mhzaly-${Date.now()}-${Math.random().toString(36).slice(2)}.eml`);
   fs.writeFileSync(tmp, eml);
   const netrc = path.join(os.tmpdir(), '.mhzaly-netrc');
-  fs.writeFileSync(netrc, `machine smtp.gmail.com login ${USER} password ${PASS}\n`, { mode: 0o600 });
+  fs.writeFileSync(netrc, `machine smtp.gmail.com login ${USER} password ${SMTP_PASS}\n`, { mode: 0o600 });
   try {
     execFileSync('curl', [
       '-sS', '--max-time', '35', '--url', 'smtp://smtp.gmail.com:587', '--ssl-reqd',
