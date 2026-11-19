@@ -2,8 +2,12 @@ name: mhzaly daily outreach
 
 on:
   schedule:
-    # 04:00 UTC = 09:00 Pakistan time, every day
+    # 04:00 UTC = 09:00 Pakistan time, every day.
+    # 04:30 UTC is a catch-up slot: GitHub's scheduler is best-effort and
+    # occasionally drops the exact 04:00 run. The cloud-side 10+10 daily cap
+    # makes a second run safe — it simply sends 0 if the first one succeeded.
     - cron: '0 4 * * *'
+    - cron: '30 4 * * *'
   workflow_dispatch:
     inputs:
       mode:
