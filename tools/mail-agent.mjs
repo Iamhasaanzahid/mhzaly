@@ -166,7 +166,7 @@ draw();`;
 <p class="sub">${TODAY} · ${emails.length} real email leads · ${CAP}/din cap · har mail mein opt-out line · koi account/key nahi chahiye.</p>
 <div class="card"><p class="stat" id="stat"></p>
 <p class="sub">"Mail kholein" dabayein — aapke mail app mein message tayyar hoga, <b>Send dabana zaroori hai</b>. Message bhejne ke baad "Ho gaya" dabayein.</p>
-<p><a class="dl" href="mail-agent-leads.csv" download="mhzaly-outreach-leads.csv">⬇ CSV download (${leads.length} leads)</a></p></div>
+<p><a class="dl" href="mail-agent-leads.csv" download="mhzaly-outreach-leads.csv">🔒 CSV download (${leads.length} leads · password protected)</a></p></div>
 <div class="card" id="msgbox"><b id="msgtitle">Message</b><textarea id="msgtext" readonly></textarea>
 <p class="sub">Agar "Mail kholein" se mail app na khule to ye text copy karke Gmail/Outlook mein naya email bana kar paste kar dein.</p></div>
 <div class="card" id="rows">${rows || '<p class="sub">Koi email lead nahi mila.</p>'}</div>`;
