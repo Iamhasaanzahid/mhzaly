@@ -54,6 +54,7 @@ async function compressImage(file) {
 
 function proofFormHTML() {
   return `<form id="proofForm">
+    <p class="hint" style="margin:0 0 12px">Pakistan: monthly Rs 2,500 · quarterly Rs 6,500 · annual Rs 20,000. International: $19/month · $49/quarter · $149/year. Lifetime $2,000 (major countries only).</p>
     <div class="form-grid">
       <div class="field">
         <label>Amount</label>

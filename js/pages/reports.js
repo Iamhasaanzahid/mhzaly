@@ -8,6 +8,7 @@ import { currentTaxSystem } from '../tax.js';
 import { openBusinessReview } from '../review.js';
 import { formatMoney } from '../currency.js';
 import { toCsv } from '../csv.js';
+import { isPharmacy, expiringProducts } from '../pharmacy.js';
 
 function money(n) {
   return formatMoney(n);
@@ -189,6 +190,10 @@ export function render(root) {
     const taxInfo = currentTaxSystem();
 
     const low = lowStockProducts();
+    const pharmacy = isPharmacy();
+    const expiring = pharmacy ? expiringProducts(90) : [];
+    const expired = expiring.filter((p) => p._exp.state === 'expired');
+    const expiringValue = expiring.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
     const inventoryCost = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
     const inventorySale = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.price) || 0), 0);
     const udhaar = totalReceivable();
@@ -300,6 +305,8 @@ export function render(root) {
               <div><div class="lbl">Inventory cost</div><div class="val">${money(inventoryCost)}</div></div>
               <div><div class="lbl">Inventory sale value</div><div class="val">${money(inventorySale)}</div></div>
               <div><div class="lbl">Low stock</div><div class="val">${low.length}</div></div>
+              ${pharmacy ? `<div><div class="lbl">Expired</div><div class="val">${expired.length}</div></div>
+              <div><div class="lbl">Expiring ≤ 90d</div><div class="val">${expiring.length}</div></div>` : ''}
               <div><div class="lbl">Udhaar</div><div class="val">${money(udhaar)}</div></div>
               <div><div class="lbl">Supplier payable</div><div class="val">${money(payable)}</div></div>
               <div><div class="lbl">Average bill</div><div class="val">${money(avgBill)}</div></div>
@@ -307,6 +314,20 @@ export function render(root) {
           </div>
         </div>
       </div>
+
+      ${pharmacy ? `<div class="card mt">
+        <div class="card-head"><h3>Pharmacy expiry & batch report</h3><span class="right">${expiring.length} items · ${money(expiringValue)} at risk</span></div>
+        <div class="card-pad">
+          ${
+            expiring.length
+              ? `<div class="table-wrap"><table style="width:100%"><thead><tr><th style="text-align:left">Medicine</th><th style="text-align:left">Salt / Formula</th><th style="text-align:right">Batch</th><th style="text-align:right">Expiry</th><th style="text-align:right">Stock</th><th style="text-align:right">Value</th></tr></thead><tbody>${expiring
+                  .map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.salt || '—')}</td><td style="text-align:right"><span class="mono">${esc(p.batch || '—')}</span></td><td style="text-align:right"><span class="badge ${p._exp.state === 'expired' ? 'danger' : p._exp.state === 'critical' ? 'danger' : 'warn'}">${p._exp.state === 'expired' ? 'Expired' : p._exp.days === 0 ? 'Today' : p._exp.days + 'd'}</span></td><td style="text-align:right">${esc(p.stock)}</td><td style="text-align:right">${money((Number(p.stock) || 0) * (Number(p.cost) || 0))}</td></tr>`)
+                  .join('')}</tbody></table></div>`
+              : emptyState('Koi medicine expiry ke qareeb nahi. Sab theek hai.')
+          }
+          <p class="small muted mt-sm" style="margin-bottom:0">Expired medicine sale POS par block hai. Near-expiry stock ko return ya discount par sale karein.</p>
+        </div>
+      </div>` : ''}
 
       <div class="card mt">
         <div class="card-head"><h3>Sales in this range</h3><span class="right">${sales.length} invoices · ${money(sales.reduce((a, s) => a + (Number(s.total) || 0), 0))}</span></div>
@@ -375,6 +396,15 @@ export function render(root) {
       ]);
     }
     rows.push([]);
+    if (isPharmacy()) {
+      const exp = expiringProducts(90);
+      rows.push(['Pharmacy expiry', '']);
+      rows.push(['Medicine', 'Salt', 'Batch', 'Expiry', 'Stock', 'Value']);
+      for (const p of exp) {
+        rows.push([p.name, p.salt || '', p.batch || '', p.expiry || '', Number(p.stock) || 0, (Number(p.stock) || 0) * (Number(p.cost) || 0)]);
+      }
+      rows.push([]);
+    }
     rows.push(['Sales', '']);
     rows.push(['Invoice', 'Date', 'Customer', 'Total', 'Tax', 'Payment']);
     for (const s of data.sales) {

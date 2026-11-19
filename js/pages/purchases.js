@@ -6,6 +6,7 @@ import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { toCsv } from '../csv.js';
+import { isPharmacy } from '../pharmacy.js';
 
 function rangeStart(range) {
   if (range === 'all') return null;
@@ -18,6 +19,7 @@ function rangeStart(range) {
 }
 
 export function render(root) {
+  const pharmacy = isPharmacy();
   root.innerHTML = `
     <div class="page-head">
       <div class="grow">
@@ -56,6 +58,8 @@ export function render(root) {
                 <th style="text-align:left">Product</th>
                 <th style="text-align:left">Supplier</th>
                 <th style="text-align:right">Qty</th>
+                ${pharmacy ? `<th style="text-align:left">Batch</th>
+                <th style="text-align:right">Expiry</th>` : ''}
                 <th style="text-align:right">Cost</th>
                 <th style="text-align:left">Date</th>
                 <th style="width:70px"></th>
@@ -112,7 +116,7 @@ export function render(root) {
     }
     if (!list.length) {
       root.querySelector('#purchaseTableBody').innerHTML = `
-        <tr><td colspan="6"><div class="empty-state">Is filter mein koi purchase record nahi.</div></td></tr>`;
+        <tr><td colspan="${pharmacy ? 8 : 6}"><div class="empty-state">Is filter mein koi purchase record nahi.</div></td></tr>`;
       return;
     }
     root.querySelector('#purchaseTableBody').innerHTML = list
@@ -122,6 +126,8 @@ export function render(root) {
         <td><b>${esc(p.productName)}</b></td>
         <td>${esc(p.supplierName || '')}</td>
         <td style="text-align:right">${esc(p.qty)}</td>
+        ${pharmacy ? `<td><span class="mono">${esc(p.batch || '—')}</span></td>
+        <td style="text-align:right">${esc(p.expiry || '—')}</td>` : ''}
         <td style="text-align:right">${money(p.totalCost)}</td>
         <td>${new Date(p.createdAt).toLocaleDateString('en-GB')}</td>
         <td style="text-align:right">
@@ -175,6 +181,13 @@ export function render(root) {
           <label>Cost per unit (${esc(db.settings.currency || 'Rs')})
             <input id="pfCost" type="number" min="0" step="0.01" value="0" />
           </label>
+          ${pharmacy ? `
+          <label>Batch no
+            <input id="pfBatch" placeholder="e.g. B-2291" />
+          </label>
+          <label>Expiry date
+            <input id="pfExpiry" type="date" />
+          </label>` : ''}
           <div style="grid-column:1/-1" class="pos-total">
             <span>Total cost</span><span id="pfTotal">${money(0)}</span>
           </div>
@@ -225,6 +238,8 @@ export function render(root) {
           const supplierSelect = bd.querySelector('#pfSupplier').value;
           const supplierName =
             supplierSelect || bd.querySelector('#pfSupplierName').value.trim() || '';
+          const batch = pharmacy ? (bd.querySelector('#pfBatch')?.value.trim() || '') : '';
+          const expiry = pharmacy ? (bd.querySelector('#pfExpiry')?.value || '') : '';
 
           db.purchases.push({
             id: uid('pur'),
@@ -234,17 +249,22 @@ export function render(root) {
             qty,
             cost,
             totalCost: qty * cost,
+            ...(pharmacy ? { batch, expiry } : {}),
             createdAt: new Date().toISOString(),
           });
 
           if (selectedProd) {
             selectedProd.stock = (selectedProd.stock || 0) + qty;
             selectedProd.cost = cost;
+            if (batch) selectedProd.batch = batch;
+            if (expiry) selectedProd.expiry = expiry;
           } else {
             const prod = db.products.find((x) => x.name === productName);
             if (prod) {
               prod.stock = (prod.stock || 0) + qty;
               prod.cost = cost;
+              if (batch) prod.batch = batch;
+              if (expiry) prod.expiry = expiry;
             }
           }
 
@@ -279,7 +299,7 @@ export function render(root) {
   });
 
   root.querySelector('#exportPurchases').addEventListener('click', () => {
-    const rows = [['Date', 'Product', 'Supplier', 'Qty', 'Cost', 'Total Cost']];
+    const rows = [['Date', 'Product', 'Supplier', 'Qty', 'Cost', 'Total Cost', ...(pharmacy ? ['Batch', 'Expiry'] : [])]];
     for (const p of filtered()) {
       rows.push([
         new Date(p.createdAt).toISOString().slice(0, 10),
@@ -288,6 +308,7 @@ export function render(root) {
         Number(p.qty) || 0,
         Number(p.cost) || 0,
         Number(p.totalCost) || 0,
+        ...(pharmacy ? [p.batch || '', p.expiry || ''] : []),
       ]);
     }
     downloadFile(`mhzaly-purchases-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');

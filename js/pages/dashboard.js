@@ -6,6 +6,7 @@ import { db, lowStockProducts, totalReceivable } from '../db.js';
 import { icon, esc, emptyState } from '../ui.js';
 import { businessHealth } from '../insights.js';
 import { formatMoney } from '../currency.js';
+import { isPharmacy, expiringProducts } from '../pharmacy.js';
 
 function greeting() {
   const h = new Date().getHours();
@@ -58,6 +59,9 @@ function healthBar(label, value) {
 export function render(root) {
   const shop = db.settings.shopName || 'My Mart';
   const low = lowStockProducts();
+  const pharmacy = isPharmacy();
+  const expiring = pharmacy ? expiringProducts(90) : [];
+  const expiredCount = expiring.filter((p) => p._exp.state === 'expired').length;
   const receivable = totalReceivable();
   const health = businessHealth();
 
@@ -116,6 +120,9 @@ export function render(root) {
     const worst = low.slice().sort((a, b) => (a.stock ?? 0) - (b.stock ?? 0))[0];
     tips.push(`<b>${low.length} product${low.length > 1 ? 's' : ''} low stock</b> mein hain — sab se kam <b>${esc(worst.name)}</b> (${worst.stock ?? 0} left). Restock karein.`);
   }
+  if (pharmacy && expiring.length) {
+    tips.push(`<b>${expiring.length} medicine${expiring.length > 1 ? 's' : ''}</b> expiry ke qareeb hain${expiredCount ? ` — <b>${expiredCount} expired</b>` : ''}. Pehle inhein sale/return karein.`);
+  }
   if (receivable > 0) {
     tips.push(`Customers se <b>${money(receivable)}</b> udhaar baqi hai — reminder bhejne ka achha waqt hai.`);
   }
@@ -149,6 +156,7 @@ export function render(root) {
       ${kpi('sparkle', 'blue', 'Today Profit', money(todayProfit), 'Aaj ka munafa')}
       ${kpi('bag', 'violet', 'Products', db.products.length, low.length + ' low stock')}
       ${kpi('alert', low.length ? 'amber' : 'green', 'Low Stock', low.length, low.length ? 'Restock karein' : 'Sab theek hai')}
+      ${pharmacy ? kpi('calendar', expiredCount ? 'amber' : 'teal', 'Expiry Alerts', expiring.length, expiredCount ? `${expiredCount} expired` : '90 din ke andar') : ''}
       ${kpi('sparkle', 'teal', 'Udhaar', money(receivable), 'Customers se lena hai')}
       ${kpi('calendar', 'slate', 'Plan', planLabel, daysLeft == null ? '—' : daysLeft + ' din baqi')}
     </div>
@@ -257,6 +265,23 @@ export function render(root) {
           }
         </div>
       </div>
+
+      ${pharmacy ? `<div class="card">
+        <div class="card-head"><h3>Expiry Alerts</h3><button class="link-btn" data-nav="products">Manage</button></div>
+        <div class="card-pad">
+          ${
+            expiring.length
+              ? `<div class="table-wrap"><table style="width:100%"><thead><tr><th style="text-align:left">Medicine</th><th style="text-align:right">Batch</th><th style="text-align:right">Expiry</th><th style="text-align:right">Stock</th></tr></thead><tbody>${expiring
+                  .slice(0, 6)
+                  .map(
+                    (p) =>
+                      `<tr><td>${esc(p.name)}</td><td style="text-align:right"><span class="mono">${esc(p.batch || '—')}</span></td><td style="text-align:right"><span class="badge ${p._exp.state === 'expired' ? 'danger' : p._exp.state === 'critical' ? 'danger' : 'warn'}">${p._exp.state === 'expired' ? 'Expired' : p._exp.days === 0 ? 'Today' : p._exp.days + 'd'}</span></td><td style="text-align:right">${esc(p.stock)}</td></tr>`
+                  )
+                  .join('')}</tbody></table></div>`
+              : emptyState('No near-expiry stock. Sab theek hai.')
+          }
+        </div>
+      </div>` : ''}
     </div>`;
 
   // Auto-dismiss alert after 10 seconds

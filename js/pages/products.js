@@ -6,11 +6,11 @@ import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { parseCsv, toCsv, readFileText } from '../csv.js';
+import { isPharmacy, expiryState, expiryBadge } from '../pharmacy.js';
 
-const CSV_TEMPLATE = `Name,Category,SKU,Unit,Cost,Price,Stock,Low Stock
-Basmati Rice 1kg,Grocery,1002,kg,230,280,10,10
-Cooking Oil 1L,Grocery,1003,ltr,420,490,10,10
-Soap Bar,Household,1009,pcs,105,140,12,6
+const CSV_TEMPLATE = `Name,Category,SKU,Unit,Cost,Price,Stock,Low Stock,Salt,Batch,Expiry,Manufacturer,Rack,Rx
+Basmati Rice 1kg,Grocery,1002,kg,230,280,10,10,,,,,
+Panadol 500mg (Strip),Pain Relief,4001,strip,25,35,20,20,Paracetamol 500mg,B-2291,2027-12-31,GSK,A-3,No
 `;
 
 const HEADER_ALIASES = {
@@ -22,7 +22,30 @@ const HEADER_ALIASES = {
   price: ['price', 'sale price', 'selling price', 'retail price', 'mrp', 'rate'],
   stock: ['stock', 'qty', 'quantity', 'inventory', 'stock qty'],
   lowStock: ['low stock', 'low', 'alert', 'min stock', 'minimum stock', 'reorder level'],
+  salt: ['salt', 'formula', 'composition', 'generic', 'generic name', 'salt name'],
+  batch: ['batch', 'batch no', 'batch number', 'lot', 'lot no', 'lot number'],
+  expiry: ['expiry', 'expiry date', 'exp date', 'exp', 'expires', 'expire date'],
+  manufacturer: ['manufacturer', 'company', 'brand', 'mfr'],
+  rack: ['rack', 'shelf', 'location', 'shelf no'],
+  rx: ['rx', 'prescription', 'prescription required', 'schedule'],
 };
+
+function normalizeDate(value) {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) {
+    let [, a, b, y] = m;
+    if (y.length === 2) y = '20' + y;
+    const d = Number(a);
+    const mo = Number(b);
+    if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12) {
+      return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+  }
+  return v;
+}
 
 function normHeader(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -76,6 +99,12 @@ function importProducts(text) {
       if (price !== null && Number.isFinite(price) && price > 0) existing.price = price;
       if (stock !== null && Number.isFinite(stock) && stock >= 0) existing.stock = stock;
       if (lowStock !== null && Number.isFinite(lowStock) && lowStock >= 0) existing.lowStock = lowStock;
+      if (data.salt) existing.salt = data.salt;
+      if (data.batch) existing.batch = data.batch;
+      if (data.expiry) existing.expiry = normalizeDate(data.expiry);
+      if (data.manufacturer) existing.manufacturer = data.manufacturer;
+      if (data.rack) existing.rack = data.rack;
+      if (data.rx !== undefined) existing.rx = /^(1|true|yes|y|rx)$/i.test(data.rx);
       existing.updatedAt = now;
       updated += 1;
       continue;
@@ -93,6 +122,12 @@ function importProducts(text) {
       price,
       stock: stock !== null && Number.isFinite(stock) && stock >= 0 ? stock : 0,
       lowStock: lowStock !== null && Number.isFinite(lowStock) && lowStock >= 0 ? lowStock : Number(db.settings.lowStock) || 5,
+      salt: data.salt || '',
+      batch: data.batch || '',
+      expiry: normalizeDate(data.expiry),
+      manufacturer: data.manufacturer || '',
+      rack: data.rack || '',
+      rx: /^(1|true|yes|y|rx)$/i.test(data.rx || ''),
       createdAt: now,
       updatedAt: now,
     });
@@ -104,6 +139,7 @@ function importProducts(text) {
 }
 
 export function render(root) {
+  const pharmacy = isPharmacy();
   root.innerHTML = `
     <div class="page-head">
       <div class="grow">
@@ -122,7 +158,7 @@ export function render(root) {
         <div class="filter-row">
           <div class="field grow">
             <label>Search</label>
-            <input class="input" id="productSearch" placeholder="Name, SKU or category" />
+            <input class="input" id="productSearch" placeholder="${pharmacy ? 'Name, salt, batch, SKU or category' : 'Name, SKU or category'}" />
           </div>
           <div class="field">
             <label>Category</label>
@@ -132,6 +168,10 @@ export function render(root) {
             <input type="checkbox" id="lowOnly" />
             <span>Low stock only</span>
           </label>
+          ${pharmacy ? `<label class="check-inline">
+            <input type="checkbox" id="expiryOnly" />
+            <span>Expiring ≤ 90 days</span>
+          </label>` : ''}
         </div>
         <div class="table-wrap">
           <table style="width:100%;margin-top:10px">
@@ -139,6 +179,9 @@ export function render(root) {
               <tr>
                 <th style="text-align:left">Name</th>
                 <th style="text-align:left">Category</th>
+                ${pharmacy ? `<th style="text-align:left">Salt / Formula</th>
+                <th style="text-align:right">Batch</th>
+                <th style="text-align:right">Expiry</th>` : ''}
                 <th style="text-align:right">SKU</th>
                 <th style="text-align:right">Cost</th>
                 <th style="text-align:right">Price</th>
@@ -156,6 +199,7 @@ export function render(root) {
   const searchEl = root.querySelector('#productSearch');
   const categoryEl = root.querySelector('#productCategory');
   const lowOnlyEl = root.querySelector('#lowOnly');
+  const expiryOnlyEl = root.querySelector('#expiryOnly');
 
   function fillCategories() {
     const current = categoryEl.value || 'all';
@@ -170,20 +214,26 @@ export function render(root) {
     const q = String(searchEl.value || '').toLowerCase().trim();
     const category = categoryEl.value || 'all';
     const lowOnly = lowOnlyEl.checked;
+    const expiryOnly = !!(pharmacy && expiryOnlyEl && expiryOnlyEl.checked);
     const filtered = db.products.filter((p) => {
       const matchesQuery =
         !q ||
         String(p.name || '').toLowerCase().includes(q) ||
         String(p.sku || '').toLowerCase().includes(q) ||
-        String(p.category || '').toLowerCase().includes(q);
+        String(p.category || '').toLowerCase().includes(q) ||
+        String(p.salt || '').toLowerCase().includes(q) ||
+        String(p.batch || '').toLowerCase().includes(q) ||
+        String(p.manufacturer || '').toLowerCase().includes(q);
       const matchesCategory = category === 'all' || (p.category || 'General') === category;
       const isLow = (p.stock ?? 0) <= (p.lowStock ?? 5);
-      return matchesQuery && matchesCategory && (!lowOnly || isLow);
+      const exp = pharmacy ? expiryState(p.expiry) : null;
+      const matchesExpiry = !expiryOnly || (exp && (exp.state === 'expired' || (exp.days !== null && exp.days <= 90)));
+      return matchesQuery && matchesCategory && (!lowOnly || isLow) && matchesExpiry;
     });
 
     if (!filtered.length) {
       root.querySelector('#productTableBody').innerHTML = `
-        <tr><td colspan="8"><div class="empty-state">Koi product nahi mila. Filter change karein ya naya product add karein.</div></td></tr>`;
+        <tr><td colspan="${pharmacy ? 11 : 8}"><div class="empty-state">Koi product nahi mila. Filter change karein ya naya product add karein.</div></td></tr>`;
       return;
     }
 
@@ -194,6 +244,9 @@ export function render(root) {
       <tr>
         <td><b>${esc(p.name)}</b></td>
         <td>${esc(p.category || '')}</td>
+        ${pharmacy ? `<td>${esc(p.salt || '')}</td>
+        <td style="text-align:right"><span class="mono">${esc(p.batch || '')}</span></td>
+        <td style="text-align:right">${expiryBadge(p.expiry)}</td>` : ''}
         <td style="text-align:right"><span class="mono">${esc(p.sku || '')}</span></td>
         <td style="text-align:right">${money(p.cost)}</td>
         <td style="text-align:right">${money(p.price)}</td>
@@ -213,6 +266,7 @@ export function render(root) {
   searchEl.addEventListener('input', renderTable);
   categoryEl.addEventListener('change', renderTable);
   lowOnlyEl.addEventListener('change', renderTable);
+  if (expiryOnlyEl) expiryOnlyEl.addEventListener('change', renderTable);
 
   function openProductForm(existing) {
     const p = existing || {};
@@ -247,6 +301,27 @@ export function render(root) {
           <label>Unit
             <input id="pfUnit" value="${esc(p.unit || 'pcs')}" placeholder="pcs / kg / pack" />
           </label>
+          ${pharmacy ? `
+          <div style="grid-column:1/-1;margin-top:4px"><b class="small">Pharmacy details</b> <span class="hint">— salt, batch aur expiry zaroor bharein</span></div>
+          <label style="grid-column:1/-1">Salt / Formula
+            <input id="pfSalt" value="${esc(p.salt || '')}" placeholder="e.g. Paracetamol 500mg" />
+          </label>
+          <label>Manufacturer
+            <input id="pfManufacturer" value="${esc(p.manufacturer || '')}" placeholder="e.g. GSK" />
+          </label>
+          <label>Batch no
+            <input id="pfBatch" value="${esc(p.batch || '')}" placeholder="e.g. B-2291" />
+          </label>
+          <label>Expiry date
+            <input id="pfExpiry" type="date" value="${esc(p.expiry || '')}" />
+          </label>
+          <label>Rack / shelf
+            <input id="pfRack" value="${esc(p.rack || '')}" placeholder="e.g. A-3" />
+          </label>
+          <label class="check-inline" style="align-self:end;padding-bottom:8px">
+            <input type="checkbox" id="pfRx" ${p.rx ? 'checked' : ''} />
+            <span>Prescription (Rx) required</span>
+          </label>` : ''}
         </div>`,
       footer: `<button class="btn btn-ghost" data-cancel>Cancel</button>
                <button class="btn btn-primary" id="pfSave">${icon('check')} ${isEdit ? 'Save changes' : 'Add product'}</button>`,
@@ -270,6 +345,14 @@ export function render(root) {
             price,
             stock,
             lowStock: low,
+            ...(pharmacy ? {
+              salt: bd.querySelector('#pfSalt')?.value.trim() || '',
+              manufacturer: bd.querySelector('#pfManufacturer')?.value.trim() || '',
+              batch: bd.querySelector('#pfBatch')?.value.trim() || '',
+              expiry: bd.querySelector('#pfExpiry')?.value || '',
+              rack: bd.querySelector('#pfRack')?.value.trim() || '',
+              rx: !!bd.querySelector('#pfRx')?.checked,
+            } : {}),
             updatedAt: new Date().toISOString(),
           };
 
@@ -376,7 +459,7 @@ export function render(root) {
   });
 
   root.querySelector('#exportProducts').addEventListener('click', () => {
-    const rows = [['Name', 'Category', 'SKU', 'Unit', 'Cost', 'Price', 'Stock', 'Low Stock']];
+    const rows = [['Name', 'Category', 'SKU', 'Unit', 'Cost', 'Price', 'Stock', 'Low Stock', ...(pharmacy ? ['Salt', 'Batch', 'Expiry', 'Manufacturer', 'Rack', 'Rx'] : [])]];
     for (const p of db.products) {
       rows.push([
         p.name,
@@ -387,6 +470,7 @@ export function render(root) {
         Number(p.price) || 0,
         Number(p.stock) || 0,
         Number(p.lowStock) || 0,
+        ...(pharmacy ? [p.salt || '', p.batch || '', p.expiry || '', p.manufacturer || '', p.rack || '', p.rx ? 'Yes' : 'No'] : []),
       ]);
     }
     downloadFile(`mhzaly-products-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');

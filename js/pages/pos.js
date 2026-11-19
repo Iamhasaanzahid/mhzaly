@@ -5,6 +5,7 @@
 import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal } from '../ui.js';
 import { money, printReceipt, shareWhatsApp } from '../receipt-share.js';
+import { expiryState, expiryBadge } from '../pharmacy.js';
 
 const HELD_KEY = 'mhzaly_held_bills';
 
@@ -51,7 +52,7 @@ export function render(root) {
         <div class="card-pad">
           <div class="field mt-sm">
             <label>Search / scan product</label>
-            <input class="input" id="posSearch" placeholder="Name, SKU ya barcode — Enter dabayein" autocomplete="off" />
+            <input class="input" id="posSearch" placeholder="Name, salt, batch, SKU ya barcode — Enter dabayein" autocomplete="off" />
           </div>
           <div id="posProductList" class="pos-list">${renderProductList(db.products, cart)}</div>
         </div>
@@ -163,12 +164,23 @@ export function render(root) {
     const p = db.products.find((x) => x.id === id);
     if (!p) return;
     if ((p.stock || 0) <= 0) return toast('Ye product out of stock hai', 'error');
+    const exp = expiryState(p.expiry);
+    if (exp.state === 'expired') return toast(`${p.name} expired hai — sale blocked`, 'error');
+    if (exp.state === 'critical') toast(`${p.name} sirf ${exp.days} din mein expire ho raha hai`);
     const existing = cart.find((i) => i.id === id);
     if (existing) {
       if (existing.qty >= (p.stock || 0)) return toast('Stock limit reached', 'error');
       existing.qty += 1;
     } else {
-      cart.push({ id: p.id, name: p.name, price: Number(p.price) || 0, qty: 1 });
+      cart.push({
+        id: p.id,
+        name: p.name,
+        price: Number(p.price) || 0,
+        qty: 1,
+        salt: p.salt || '',
+        batch: p.batch || '',
+        expiry: p.expiry || '',
+      });
     }
     refresh();
   }
@@ -199,7 +211,12 @@ export function render(root) {
     const q = String(search.value || '').toLowerCase().trim();
     if (!q) return db.products;
     return db.products.filter(
-      (p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.salt || '').toLowerCase().includes(q) ||
+        (p.batch || '').toLowerCase().includes(q) ||
+        (p.manufacturer || '').toLowerCase().includes(q)
     );
   }
 
@@ -502,15 +519,21 @@ function renderProductList(products, cart) {
   const qtyMap = new Map(cart.map((i) => [i.id, i.qty]));
   return products
     .map((p) => {
+      const exp = expiryState(p.expiry);
       const hasStock = (p.stock || 0) > 0;
+      const expired = exp.state === 'expired';
       const inCart = qtyMap.get(p.id) || 0;
-      return `<div class="pos-row">
+      const pharmaMeta = p.salt || p.batch || p.expiry
+        ? `<div class="pos-meta">${p.salt ? esc(p.salt) : ''}${p.salt && (p.batch || p.expiry) ? ' · ' : ''}${p.batch ? 'Batch ' + esc(p.batch) : ''}${p.expiry ? ' · ' + expiryBadge(p.expiry) : ''}</div>`
+        : '';
+      return `<div class="pos-row" ${expired ? 'style="opacity:.6"' : ''}>
         <div class="grow">
-          <div class="pos-name">${esc(p.name)}</div>
+          <div class="pos-name">${esc(p.name)}${p.rx ? ' <span class="badge warn">Rx</span>' : ''}</div>
           <div class="pos-meta">${esc(p.sku || '')}${p.category ? ' · ' + esc(p.category) : ''}</div>
+          ${pharmaMeta}
           <div class="pos-meta">Stock: ${esc(p.stock)} · ${money(p.price)}</div>
         </div>
-        <button class="btn btn-primary btn-sm" ${!hasStock ? 'disabled' : ''} data-add="${esc(p.id)}">
+        <button class="btn btn-primary btn-sm" ${!hasStock || expired ? 'disabled' : ''} data-add="${esc(p.id)}" ${expired ? 'title="Expired — sale blocked"' : ''}>
           ${icon('plus')}${inCart ? ` <span>${inCart}</span>` : ''}
         </button>
       </div>`;
@@ -526,7 +549,7 @@ function renderCart(cart) {
     <div class="pos-row">
       <div class="grow">
         <div class="pos-name">${esc(i.name)}</div>
-        <div class="pos-meta">${money(i.price)} each</div>
+        <div class="pos-meta">${money(i.price)} each${i.batch ? ' · Batch ' + esc(i.batch) : ''}${i.expiry ? ' · ' + expiryBadge(i.expiry) : ''}</div>
       </div>
       <div class="qty-ctrl">
         <button class="qty-btn" data-dec="${esc(i.id)}">−</button>
