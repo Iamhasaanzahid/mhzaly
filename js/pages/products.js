@@ -164,6 +164,8 @@ export function render(root) {
       </div>
     </div>
 
+    <div class="stat-strip" id="productStats"></div>
+
     <div class="card mt">
       <div class="card-pad">
         <div class="filter-row">
@@ -174,6 +176,17 @@ export function render(root) {
           <div class="field">
             <label>Category</label>
             <select class="input" id="productCategory"></select>
+          </div>
+          <div class="field">
+            <label>Sort</label>
+            <select class="input" id="productSort">
+              <option value="name">Name A–Z</option>
+              <option value="stock-asc">Stock low → high</option>
+              <option value="stock-desc">Stock high → low</option>
+              <option value="price-desc">Price high → low</option>
+              <option value="margin-desc">Margin high → low</option>
+              ${pharmacy ? '<option value="expiry">Expiry soon</option>' : ''}
+            </select>
           </div>
           <label class="check-inline">
             <input type="checkbox" id="lowOnly" />
@@ -209,8 +222,33 @@ export function render(root) {
 
   const searchEl = root.querySelector('#productSearch');
   const categoryEl = root.querySelector('#productCategory');
+  const sortEl = root.querySelector('#productSort');
   const lowOnlyEl = root.querySelector('#lowOnly');
   const expiryOnlyEl = root.querySelector('#expiryOnly');
+  const statsEl = root.querySelector('#productStats');
+  const money0 = (n) => money(Number(n) || 0);
+
+  function paintStats() {
+    if (!statsEl) return;
+    const totalStock = db.products.reduce((a, p) => a + (Number(p.stock) || 0), 0);
+    const costValue = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
+    const retailValue = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.price) || 0), 0);
+    const out = db.products.filter((p) => (Number(p.stock) || 0) <= 0).length;
+    const nearExpiry = pharmacy
+      ? db.products.filter((p) => {
+          const exp = productExpiryState(p);
+          return exp.state === 'expired' || (exp.days !== null && exp.days <= 90);
+        }).length
+      : 0;
+    statsEl.innerHTML = `
+      <div><div class="lbl">Products</div><div class="val">${db.products.length}</div></div>
+      <div><div class="lbl">Stock units</div><div class="val">${totalStock}</div></div>
+      <div><div class="lbl">Inventory cost</div><div class="val">${money0(costValue)}</div></div>
+      <div><div class="lbl">Retail value</div><div class="val">${money0(retailValue)}</div></div>
+      <div><div class="lbl">Potential profit</div><div class="val text-ok">${money0(retailValue - costValue)}</div></div>
+      <div><div class="lbl">Out of stock</div><div class="val ${out ? 'text-warn' : ''}">${out}</div></div>
+      ${pharmacy ? `<div><div class="lbl">Expiry alerts</div><div class="val ${nearExpiry ? 'text-warn' : ''}">${nearExpiry}</div></div>` : ''}`;
+  }
 
   function fillCategories() {
     const current = categoryEl.value || 'all';
@@ -243,6 +281,25 @@ export function render(root) {
       return matchesQuery && matchesCategory && (!lowOnly || isLow) && matchesExpiry;
     });
 
+    const sort = sortEl ? sortEl.value : 'name';
+    const margin = (p) => {
+      const price = Number(p.price) || 0;
+      return price > 0 ? ((price - (Number(p.cost) || 0)) / price) * 100 : 0;
+    };
+    filtered.sort((a, b) => {
+      if (sort === 'stock-asc') return (Number(a.stock) || 0) - (Number(b.stock) || 0) || String(a.name || '').localeCompare(String(b.name || ''));
+      if (sort === 'stock-desc') return (Number(b.stock) || 0) - (Number(a.stock) || 0) || String(a.name || '').localeCompare(String(b.name || ''));
+      if (sort === 'price-desc') return (Number(b.price) || 0) - (Number(a.price) || 0);
+      if (sort === 'margin-desc') return margin(b) - margin(a);
+      if (sort === 'expiry' && pharmacy) {
+        const ea = productExpiryState(a);
+        const eb = productExpiryState(b);
+        return (ea.days ?? 99999) - (eb.days ?? 99999);
+      }
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+    paintStats();
+
     if (!filtered.length) {
       root.querySelector('#productTableBody').innerHTML = `
         <tr><td colspan="${pharmacy ? 11 : 8}"><div class="empty-state">Koi product nahi mila. Filter change karein ya naya product add karein.</div></td></tr>`;
@@ -254,6 +311,9 @@ export function render(root) {
         const low = (p.stock ?? 0) <= (p.lowStock ?? 5);
         const batches = productBatches(p);
         const nb = nearestBatch(p);
+        const marginPct = Number(p.price) > 0
+          ? Math.round(((Number(p.price) - (Number(p.cost) || 0)) / Number(p.price)) * 100)
+          : 0;
         return `
       <tr>
         <td><b>${esc(p.name)}</b></td>
@@ -263,7 +323,7 @@ export function render(root) {
         <td style="text-align:right">${expiryBadge(nb ? nb.expiry : '')}</td>` : ''}
         <td style="text-align:right"><span class="mono">${esc(p.sku || '')}</span></td>
         <td style="text-align:right">${money(p.cost)}</td>
-        <td style="text-align:right">${money(p.price)}</td>
+        <td style="text-align:right">${money(p.price)}<div class="pos-meta ${marginPct < 0 ? 'text-warn' : ''}">${marginPct}% margin</div></td>
         <td style="text-align:right">${low ? `<span class="badge ${(p.stock ?? 0) === 0 ? 'danger' : 'warn'}">${esc(p.stock || 0)}</span>` : esc(p.stock || 0)}</td>
         <td style="text-align:right">${esc(p.lowStock || 5)}</td>
         <td style="text-align:right">
@@ -278,11 +338,30 @@ export function render(root) {
   }
 
   fillCategories();
+
+  const paletteSearch = sessionStorage.getItem('mhzaly_product_search');
+  if (paletteSearch) {
+    sessionStorage.removeItem('mhzaly_product_search');
+    searchEl.value = paletteSearch;
+  }
+  if (sessionStorage.getItem('mhzaly_product_low')) {
+    sessionStorage.removeItem('mhzaly_product_low');
+    lowOnlyEl.checked = true;
+  }
+  if (expiryOnlyEl && sessionStorage.getItem('mhzaly_product_expiry')) {
+    sessionStorage.removeItem('mhzaly_product_expiry');
+    expiryOnlyEl.checked = true;
+  }
+  const addFromPalette = sessionStorage.getItem('mhzaly_add_product');
+  if (addFromPalette) sessionStorage.removeItem('mhzaly_add_product');
+
   renderTable();
   searchEl.addEventListener('input', renderTable);
   categoryEl.addEventListener('change', renderTable);
+  if (sortEl) sortEl.addEventListener('change', renderTable);
   lowOnlyEl.addEventListener('change', renderTable);
   if (expiryOnlyEl) expiryOnlyEl.addEventListener('change', renderTable);
+  if (addFromPalette) setTimeout(() => openProductForm(null), 80);
 
   function openProductForm(existing) {
     const p = existing || {};

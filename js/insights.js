@@ -6,6 +6,7 @@
 
 import { db, lowStockProducts, totalReceivable } from './db.js';
 import { formatMoney } from './currency.js';
+import { isPharmacy, sellableQty } from './pharmacy.js';
 
 export function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -297,12 +298,15 @@ export function restockPlan({ days = 30, leadDays = 7, coverDays = 14 } = {}) {
     }
   }
 
+  const pharmacy = isPharmacy();
   const rows = db.products.map((product) => {
     const sold = Math.max(
       byId.get(product.id) || 0,
       byName.get(norm(product.name)) || 0
     );
-    const stock = Number(product.stock) || 0;
+    const rawStock = Number(product.stock) || 0;
+    const stock = pharmacy ? sellableQty(product) : rawStock;
+    const expiredQty = Math.max(0, rawStock - stock);
     const lowStock = Number(product.lowStock) || 5;
     const velocity = sold / windowDays;
     const cover = velocity > 0 ? stock / velocity : null;
@@ -322,6 +326,8 @@ export function restockPlan({ days = 30, leadDays = 7, coverDays = 14 } = {}) {
       sold,
       velocity,
       stock,
+      rawStock,
+      expiredQty,
       lowStock,
       cover,
       suggested,
@@ -354,6 +360,8 @@ export function restockPlan({ days = 30, leadDays = 7, coverDays = 14 } = {}) {
       cost: reorder.reduce((sum, row) => sum + row.cost, 0),
       deadCount: dead.length,
       deadValue: dead.reduce((sum, row) => sum + row.deadValue, 0),
+      expiredUnits: rows.reduce((sum, row) => sum + (row.expiredQty || 0), 0),
+      expiredValue: rows.reduce((sum, row) => sum + (row.expiredQty || 0) * (Number(row.product.cost) || 0), 0),
     },
   };
 }

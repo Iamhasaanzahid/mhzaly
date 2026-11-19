@@ -4,7 +4,7 @@
 
 import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
-import { money } from '../receipt-share.js';
+import { money, normalizePhone } from '../receipt-share.js';
 import { supplierLedger, openStatement } from '../statement.js';
 import { toCsv } from '../csv.js';
 
@@ -86,6 +86,7 @@ export function render(root) {
         </td>
         <td style="text-align:right; white-space:nowrap">
           <button class="btn btn-ghost btn-sm" data-statement="${esc(s.id)}" title="Statement / ledger">${icon('chart')}</button>
+          ${bal > 0 && s.phone ? `<button class="btn btn-ghost btn-sm" data-remind="${esc(s.id)}" title="WhatsApp payment reminder">${icon('sparkle')}</button>` : ''}
           ${bal > 0 ? `<button class="btn btn-primary btn-sm" data-pay="${esc(s.id)}" title="Pay supplier">${icon('wallet')}</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit="${esc(s.id)}" title="Edit">${icon('settings')}</button>
           <button class="btn btn-ghost btn-sm" data-del="${esc(s.id)}" title="Delete">${icon('trash')}</button>
@@ -96,6 +97,13 @@ export function render(root) {
   }
 
   paintSummary();
+
+  const paletteSearch = sessionStorage.getItem('mhzaly_supplier_search');
+  if (paletteSearch) {
+    sessionStorage.removeItem('mhzaly_supplier_search');
+    root.querySelector('#supplierSearch').value = paletteSearch;
+  }
+
   renderTable();
   root.querySelector('#supplierSearch').addEventListener('input', renderTable);
 
@@ -217,6 +225,16 @@ export function render(root) {
     if (statement) {
       const s = db.suppliers.find((x) => x.id === statement.dataset.statement);
       if (s) openStatement(supplierLedger(s));
+      return;
+    }
+    const remind = e.target.closest('[data-remind]');
+    if (remind) {
+      const s = db.suppliers.find((x) => x.id === remind.dataset.remind);
+      if (!s) return;
+      const phone = normalizePhone(s.phone);
+      if (!phone) return toast('Supplier ka phone number nahi hai', 'error');
+      const text = `Assalam o Alaikum ${s.name}, ${db.settings.shopName || 'shop'} ki taraf se payment reminder. Payable balance: ${money(s.balance)}. Shukriya.`;
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
       return;
     }
     const pay = e.target.closest('[data-pay]');

@@ -10,8 +10,9 @@ import {
 } from './api.js';
 import { resolvedTheme, applyTheme, toggleTheme, watchSystemTheme } from './theme.js';
 import { LANGS, initLang, applyLang, setLang, getLang, coverage, t } from './i18n.js';
-import { applyLanguageCountry } from './currency.js';
+import { applyLanguageCountry, formatMoney } from './currency.js';
 import { applyTaxCountry } from './tax.js';
+import { isPharmacy, expiringProducts, productBatches } from './pharmacy.js';
 
 import * as authPage from './pages/auth.js';
 import * as dashboard from './pages/dashboard.js';
@@ -59,6 +60,7 @@ let currentPage = null;
 let deferredInstall = null;
 let swRegistration = null;
 let swRefreshing = false;
+let notifTimer = null;
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -68,64 +70,356 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 function openCommandPalette() {
+  const low = lowStockProducts();
+  const expiring = isPharmacy() ? expiringProducts(90) : [];
+
   const actions = [
-    { label: 'New sale (POS)', hint: 'Create an invoice', go: 'pos', icon: 'plus' },
-    { label: 'AI Assistant', hint: 'Ask about shop data', go: 'assistant', icon: 'sparkle' },
-    { label: 'Dashboard', hint: 'Today overview', go: 'dashboard', icon: 'calendar' },
-    { label: 'Smart Restock', hint: 'Demand forecast', go: 'restock', icon: 'alert' },
-    { label: 'Profit Leak Finder', hint: 'Paisa kahan ja raha hai', go: 'leaks', icon: 'chart' },
-    { label: 'Day Close', hint: 'Cash reconciliation', go: 'dayclose', icon: 'wallet' },
-    { label: 'Products', hint: 'Inventory', go: 'products', icon: 'bag' },
-    { label: 'Sales', hint: 'All invoices', go: 'sales', icon: 'check' },
-    { label: 'Returns & refunds', hint: 'Return items', go: 'returns', icon: 'return' },
-    { label: 'Purchases', hint: 'Supplier stock', go: 'purchases', icon: 'alert' },
-    { label: 'Customers', hint: 'Udhaar khata', go: 'customers', icon: 'bag' },
-    { label: 'Suppliers', hint: 'Payables', go: 'suppliers', icon: 'bag' },
-    { label: 'Expenses', hint: 'Record costs', go: 'expenses', icon: 'alert' },
-    { label: 'Reports', hint: 'Profit & summary', go: 'reports', icon: 'chart' },
-    { label: 'Settings', hint: 'Shop & backup', go: 'settings', icon: 'settings' },
-    { label: 'Keyboard shortcuts', hint: 'Shortcut help', shortcuts: true, icon: 'settings' },
-    { label: 'Toggle dark mode', hint: 'Theme', theme: true, icon: 'moon' },
-    { label: 'Language', hint: '12 languages · زبان · भाषा', lang: true, icon: 'globe' },
+    { label: 'Ask AI', hint: 'Shop data se sawal poochein', icon: 'sparkle', run: () => {
+      navigate('#/assistant');
+      setTimeout(() => document.getElementById('aiText')?.focus(), 140);
+    } },
+    { label: 'New sale (POS)', hint: 'Create an invoice', icon: 'plus', run: () => navigate('#/pos') },
+    { label: 'Add product', hint: 'Inventory mein naya item', icon: 'bag', run: () => {
+      sessionStorage.setItem('mhzaly_add_product', '1');
+      navigate('#/products');
+    } },
+    { label: 'Add customer', hint: 'Naya udhaar khata', icon: 'bag', run: () => {
+      sessionStorage.setItem('mhzaly_add_customer', '1');
+      navigate('#/customers');
+    } },
+    { label: 'Dashboard', hint: 'Today overview', icon: 'calendar', run: () => navigate('#/dashboard') },
+    { label: 'Smart Restock', hint: 'Demand forecast', icon: 'alert', run: () => navigate('#/restock') },
+    { label: 'Profit Leak Finder', hint: 'Paisa kahan ja raha hai', icon: 'chart', run: () => navigate('#/leaks') },
+    { label: 'Day Close', hint: 'Cash reconciliation', icon: 'wallet', run: () => navigate('#/dayclose') },
+    { label: 'Products', hint: 'Inventory', icon: 'bag', run: () => navigate('#/products') },
+    { label: 'Sales', hint: 'All invoices', icon: 'check', run: () => navigate('#/sales') },
+    { label: 'Returns & refunds', hint: 'Return items', icon: 'return', run: () => navigate('#/returns') },
+    { label: 'Purchases', hint: 'Supplier stock', icon: 'alert', run: () => navigate('#/purchases') },
+    { label: 'Customers', hint: 'Udhaar khata', icon: 'bag', run: () => navigate('#/customers') },
+    { label: 'Suppliers', hint: 'Payables', icon: 'bag', run: () => navigate('#/suppliers') },
+    { label: 'Expenses', hint: 'Record costs', icon: 'alert', run: () => navigate('#/expenses') },
+    { label: 'Reports', hint: 'Profit & summary', icon: 'chart', run: () => navigate('#/reports') },
+    { label: 'Settings', hint: 'Shop & backup', icon: 'settings', run: () => navigate('#/settings') },
+    { label: 'Keyboard shortcuts', hint: 'Shortcut help', icon: 'settings', run: () => openShortcutsHelp() },
+    { label: 'Toggle dark mode', hint: 'Theme', icon: 'moon', run: () => toggleTheme() },
+    { label: 'Language', hint: '12 languages · زبان · भाषा', icon: 'globe', run: () => openLanguagePicker() },
   ];
+
+  if (low.length) {
+    actions.splice(5, 0, {
+      label: `Low stock products (${low.length})`,
+      hint: 'Reorder list kholen',
+      icon: 'alert',
+      run: () => {
+        sessionStorage.setItem('mhzaly_product_low', '1');
+        navigate('#/products');
+      },
+    });
+  }
+  if (expiring.length) {
+    const expired = expiring.filter((p) => p._exp.state === 'expired').length;
+    actions.splice(6, 0, {
+      label: `Expiry alerts (${expiring.length})`,
+      hint: expired ? `${expired} expired · baqi 90 din ke andar` : '90 din ke andar expire',
+      icon: 'calendar',
+      run: () => {
+        sessionStorage.setItem('mhzaly_product_expiry', '1');
+        navigate('#/products');
+      },
+    });
+  }
+
+  const money = (n) => {
+    try { return formatMoney(Number(n) || 0); } catch { return String(n ?? ''); }
+  };
+  const has = (value, q) => String(value || '').toLowerCase().includes(q);
+
+  function dataResults(q) {
+    if (!q) return [];
+    const out = [];
+    let n = 0;
+    for (const p of db.products) {
+      if (n >= 6) break;
+      const batches = productBatches(p);
+      if (
+        has(p.name, q) || has(p.sku, q) || has(p.salt, q) || has(p.manufacturer, q) ||
+        has(p.category, q) || batches.some((b) => has(b.batch, q))
+      ) {
+        out.push({
+          label: p.name,
+          hint: `Product · ${p.stock ?? 0} stock · ${money(p.price)}`,
+          icon: 'bag',
+          run: () => {
+            sessionStorage.setItem('mhzaly_product_search', p.name);
+            navigate('#/products');
+          },
+        });
+        n += 1;
+      }
+    }
+
+    n = 0;
+    for (const c of db.customers) {
+      if (n >= 5) break;
+      if (has(c.name, q) || has(c.phone, q) || has(c.taxNumber, q)) {
+        const bal = Number(c.balance) || 0;
+        out.push({
+          label: c.name,
+          hint: `Customer · ${c.phone || 'no phone'}${bal > 0 ? ' · ' + money(bal) + ' udhaar' : ''}`,
+          icon: 'wallet',
+          run: () => {
+            sessionStorage.setItem('mhzaly_customer_search', c.name);
+            navigate('#/customers');
+          },
+        });
+        n += 1;
+      }
+    }
+
+    n = 0;
+    for (const s of db.suppliers) {
+      if (n >= 4) break;
+      if (has(s.name, q) || has(s.phone, q)) {
+        const bal = Number(s.balance) || 0;
+        out.push({
+          label: s.name,
+          hint: `Supplier · ${s.phone || 'no phone'}${bal > 0 ? ' · ' + money(bal) + ' payable' : ''}`,
+          icon: 'bag',
+          run: () => {
+            sessionStorage.setItem('mhzaly_supplier_search', s.name);
+            navigate('#/suppliers');
+          },
+        });
+        n += 1;
+      }
+    }
+
+    const sales = db.sales.slice().reverse();
+    n = 0;
+    for (const sale of sales) {
+      if (n >= 5) break;
+      if (has(sale.invoiceNo, q) || has(sale.id, q) || has(sale.customerName, q) || has(sale.customerPhone, q)) {
+        out.push({
+          label: `${sale.invoiceNo || sale.id} · ${sale.customerName || 'Walk-in'}`,
+          hint: `Invoice · ${money(sale.total)} · ${new Date(sale.createdAt || 0).toLocaleDateString('en-GB')}`,
+          icon: 'check',
+          run: () => {
+            sessionStorage.setItem('mhzaly_open_sale', sale.id);
+            navigate('#/sales');
+          },
+        });
+        n += 1;
+      }
+    }
+
+    return out;
+  }
+
   openModal({
-    title: 'Quick actions',
-    subtitle: 'Type to filter · Enter to open · Ctrl+/ anytime',
-    body: `<input class="input" id="cmdInput" placeholder="Type a page or action…" autocomplete="off" />
+    title: 'Search mhzaly',
+    subtitle: 'Products, customers, suppliers, invoices aur actions · ↑↓ move · Enter open',
+    body: `<input class="input" id="cmdInput" placeholder="Product, customer, invoice, ya action…" autocomplete="off" />
       <div class="cmd-list" id="cmdList"></div>`,
     onMount: (bd) => {
       const input = bd.querySelector('#cmdInput');
       const list = bd.querySelector('#cmdList');
-      let filtered = actions;
+      let filtered = actions.slice();
+      let active = 0;
+
       const paint = () => {
         list.innerHTML = filtered.length
-          ? filtered.map((a, i) => `<button class="cmd-item" data-i="${i}" type="button">${icon(a.icon)}<span>${esc(a.label)}</span><em>${esc(a.hint || '')}</em></button>`).join('')
-          : '<div class="empty-state">Kuch match nahi hua.</div>';
+          ? filtered.map((a, i) => `<button class="cmd-item ${i === active ? 'active' : ''}" data-i="${i}" type="button">${icon(a.icon)}<span>${esc(a.label)}</span><em>${esc(a.hint || '')}</em></button>`).join('')
+          : '<div class="empty-state">Kuch match nahi hua. Doosra naam try karein.</div>';
+        const row = list.querySelector('.cmd-item.active');
+        if (row) row.scrollIntoView({ block: 'nearest' });
+      };
+      const refresh = () => {
+        const q = String(input.value || '').toLowerCase().trim();
+        const matchedActions = q
+          ? actions.filter((a) => String(a.label || '').toLowerCase().includes(q) || String(a.hint || '').toLowerCase().includes(q))
+          : actions;
+        filtered = [...matchedActions, ...dataResults(q)].slice(0, 30);
+        active = 0;
+        paint();
       };
       const run = (a) => {
         if (!a) return;
         bd.remove();
-        if (a.theme) toggleTheme();
-        else if (a.shortcuts) openShortcutsHelp();
-        else if (a.lang) openLanguagePicker();
-        else if (a.go) navigate('#/' + a.go);
+        a.run();
       };
-      paint();
-      input.addEventListener('input', () => {
-        const q = input.value.toLowerCase().trim();
-        filtered = actions.filter((a) => a.label.toLowerCase().includes(q) || (a.hint || '').toLowerCase().includes(q));
-        paint();
-      });
+
+      input.addEventListener('input', refresh);
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); run(filtered[0]); }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          active = Math.min(filtered.length - 1, active + 1);
+          paint();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          active = Math.max(0, active - 1);
+          paint();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          run(filtered[active] || filtered[0]);
+        }
       });
       list.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-i]');
         if (btn) run(filtered[Number(btn.dataset.i)]);
       });
+      refresh();
       setTimeout(() => input.focus(), 60);
     },
   });
+}
+
+/* ---------- notification center ---------- */
+
+function notifItems() {
+  const list = [];
+  const low = lowStockProducts();
+  if (low.length) {
+    list.push({
+      tone: low.some((p) => (p.stock ?? 0) === 0) ? 'danger' : 'warn',
+      icon: 'bag',
+      title: `${low.length} product${low.length === 1 ? '' : 's'} low stock`,
+      detail: low.slice(0, 3).map((p) => p.name).join(' · '),
+      run: () => {
+        sessionStorage.setItem('mhzaly_product_low', '1');
+        navigate('#/products');
+      },
+    });
+  }
+
+  if (isPharmacy()) {
+    const expiring = expiringProducts(90);
+    if (expiring.length) {
+      const expired = expiring.filter((p) => p._exp.state === 'expired').length;
+      list.push({
+        tone: expired ? 'danger' : 'warn',
+        icon: 'calendar',
+        title: `${expiring.length} expiry alert${expiring.length === 1 ? '' : 's'}`,
+        detail: expired ? `${expired} expired · ${expiring.length - expired} 90 din ke andar` : '90 din ke andar expire ho rahi hain',
+        run: () => {
+          sessionStorage.setItem('mhzaly_product_expiry', '1');
+          navigate('#/products');
+        },
+      });
+    }
+  }
+
+  const receivable = totalReceivable();
+  const withBalance = db.customers.filter((c) => (Number(c.balance) || 0) > 0).length;
+  if (receivable > 0) {
+    list.push({
+      tone: 'warn',
+      icon: 'wallet',
+      title: `${formatMoney(receivable)} udhaar baqi`,
+      detail: `${withBalance} customer${withBalance === 1 ? '' : 's'} se lena hai`,
+      run: () => navigate('#/customers'),
+    });
+  }
+
+  const payable = db.suppliers.reduce((sum, s) => sum + Math.max(0, Number(s.balance) || 0), 0);
+  const suppliersWithBalance = db.suppliers.filter((s) => (Number(s.balance) || 0) > 0).length;
+  if (payable > 0) {
+    list.push({
+      tone: 'danger',
+      icon: 'wallet',
+      title: `${formatMoney(payable)} suppliers ko dena hai`,
+      detail: `${suppliersWithBalance} supplier${suppliersWithBalance === 1 ? '' : 's'} ka payable`,
+      run: () => navigate('#/suppliers'),
+    });
+  }
+
+  const status = db.settings._billingStatus || 'active';
+  if (status === 'trial' || status === 'expired' || status === 'blocked') {
+    list.push({
+      tone: status === 'trial' ? 'warn' : 'danger',
+      icon: 'sparkle',
+      title: status === 'trial' ? 'Trial khatam ho raha hai' : status === 'expired' ? 'Plan expired' : 'Account blocked',
+      detail: status === 'trial' ? `${db.settings._daysLeft ?? 0} din baqi — plan renew karein` : 'Owner se rabta karein',
+      run: () => navigate('#/settings'),
+    });
+  }
+
+  if (!isDemo() && (db.products.length || db.sales.length)) {
+    const last = localStorage.getItem('mhzaly_last_backup');
+    const age = last ? Date.now() - new Date(last).getTime() : Infinity;
+    if (!Number.isFinite(age) || age > 7 * 86400000) {
+      list.push({
+        tone: 'neutral',
+        icon: 'download',
+        title: 'Backup reminder',
+        detail: last ? 'Last backup 7 din se purana hai' : 'Abhi tak backup nahi liya — data safety ke liye backup lein',
+        run: () => navigate('#/settings'),
+      });
+    }
+  }
+
+  return list;
+}
+
+function updateNotifBadge() {
+  const badge = document.getElementById('notifBadge');
+  if (!badge) return;
+  const count = notifItems().length;
+  badge.textContent = count > 9 ? '9+' : String(count);
+  badge.hidden = count === 0;
+}
+
+function setupNotifications() {
+  const wrap = document.getElementById('notifWrap');
+  const btn = document.getElementById('notifBtn');
+  const panel = document.getElementById('notifPanel');
+  if (!wrap || !btn || !panel) return;
+
+  let items = [];
+  const close = () => {
+    panel.hidden = true;
+    document.removeEventListener('click', onDoc, true);
+  };
+  const onDoc = (e) => {
+    if (!wrap.contains(e.target)) close();
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!panel.hidden) { close(); return; }
+    items = notifItems();
+    panel.innerHTML = `
+      <div class="notif-head">
+        <b>Notifications</b>
+        <span class="badge ${items.length ? 'warn' : 'ok'}">${items.length ? `${items.length} alert${items.length === 1 ? '' : 's'}` : 'All clear'}</span>
+      </div>
+      ${items.length
+        ? `<div class="notif-list">${items.map((n, i) => `<button class="notif-item ${n.tone}" data-notif="${i}" type="button">
+            <span class="notif-ico">${icon(n.icon)}</span>
+            <span class="grow"><b>${esc(n.title)}</b><span>${esc(n.detail)}</span></span>
+          </button>`).join('')}</div>`
+        : `<div class="notif-empty">${icon('check')}<b>Sab theek hai</b><span>Koi urgent alert nahi.</span></div>`}
+      <button class="notif-foot" data-notif-settings type="button">${icon('settings')} Settings & backup</button>`;
+    panel.hidden = false;
+    setTimeout(() => document.addEventListener('click', onDoc, true), 0);
+  });
+
+  panel.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-notif]');
+    if (item) {
+      const n = items[Number(item.dataset.notif)];
+      close();
+      if (n) n.run();
+      return;
+    }
+    if (e.target.closest('[data-notif-settings]')) {
+      close();
+      navigate('#/settings');
+    }
+  });
+
+  updateNotifBadge();
+  if (notifTimer) clearInterval(notifTimer);
+  notifTimer = setInterval(updateNotifBadge, 60000);
 }
 
 /* ---------- language picker ---------- */
@@ -180,8 +474,10 @@ function openShortcutsHelp() {  openModal({
     subtitle: 'Kaam tez karne ke liye',
     body: `
       <div class="shortcut-list">
-        <div><kbd>Ctrl</kbd> + <kbd>K</kbd><span>AI Assistant</span></div>
-        <div><kbd>Ctrl</kbd> + <kbd>/</kbd><span>Quick actions</span></div>
+        <div><kbd>Ctrl</kbd> + <kbd>K</kbd><span>Universal search — products, customers, invoices, actions</span></div>
+        <div><kbd>Ctrl</kbd> + <kbd>/</kbd><span>Search & quick actions</span></div>
+        <div><kbd>F2</kbd><span>POS search focus</span></div>
+        <div><kbd>F4</kbd><span>POS checkout</span></div>
         <div><kbd>?</kbd><span>Ye shortcut list</span></div>
         <div><kbd>Esc</kbd><span>Modal band karein</span></div>
         <div><kbd>Enter</kbd><span>Search result / form save</span></div>
@@ -370,7 +666,11 @@ function shell() {
             <button class="icon-btn" id="installBtn" title="Install app" hidden>${icon('download')}</button>
             <button class="icon-btn" id="themeBtn" title="Dark mode">${icon('moon')}</button>
             <button class="icon-btn" id="langBtn" title="Language" aria-label="Language">${icon('globe')}</button>
-            <button class="icon-btn" id="cmdBtn" title="Quick actions (Ctrl+/)" aria-label="Quick actions">${icon('search')}</button>
+            <div class="notif-wrap" id="notifWrap">
+              <button class="icon-btn notif-btn" id="notifBtn" title="Notifications" aria-label="Notifications">${icon('bell')}<span class="notif-badge" id="notifBadge" hidden>0</span></button>
+              <div class="notif-panel" id="notifPanel" hidden></div>
+            </div>
+            <button class="icon-btn" id="cmdBtn" title="Search & actions (Ctrl+K)" aria-label="Universal search">${icon('search')}</button>
             <button class="icon-btn account-btn" id="accountBtn" title="Shop account">${esc(initials(db.settings.ownerName || shop))}</button>
             <button class="btn btn-ghost btn-sm" id="logoutTopBtn" title="${isDemo() ? 'Exit demo' : 'Logout'}">${isDemo() ? 'Exit' : 'Logout'}</button>
             <button class="btn btn-primary btn-sm" data-nav="pos">${icon('plus')} New Sale</button>
@@ -379,7 +679,7 @@ function shell() {
         <main class="content" id="main"></main>
       </div>
 
-      <button class="ai-fab" id="aiFab" type="button" title="Ask AI (Ctrl+K)" aria-label="Ask AI (Ctrl+K)">
+      <button class="ai-fab" id="aiFab" type="button" title="Ask AI" aria-label="Ask AI">
         ${icon('sparkle')} <span>Ask AI</span>
       </button>
     </div>`;
@@ -407,8 +707,7 @@ function shell() {
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
         e.preventDefault();
-        navigate('#/assistant');
-        setTimeout(() => document.getElementById('aiText')?.focus(), 140);
+        openCommandPalette();
       }
       if ((e.ctrlKey || e.metaKey) && String(e.key) === '/') {
         e.preventDefault();
@@ -438,6 +737,8 @@ function shell() {
 
   const cmdBtn = document.getElementById('cmdBtn');
   if (cmdBtn) cmdBtn.addEventListener('click', openCommandPalette);
+
+  setupNotifications();
 
   const langBtn = document.getElementById('langBtn');
   if (langBtn) langBtn.addEventListener('click', openLanguagePicker);
@@ -565,6 +866,7 @@ function navigate(hash) {
   }
   currentPage = pageId;
   document.body.classList.toggle('on-assistant', pageId === 'assistant');
+  updateNotifBadge();
   if (location.hash !== hash) history.replaceState(null, '', hash);
 }
 

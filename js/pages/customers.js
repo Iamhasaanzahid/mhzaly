@@ -174,8 +174,18 @@ export function render(root) {
 
   paintSummary();
   paintSegments();
+
+  const paletteSearch = sessionStorage.getItem('mhzaly_customer_search');
+  if (paletteSearch) {
+    sessionStorage.removeItem('mhzaly_customer_search');
+    root.querySelector('#customerSearch').value = paletteSearch;
+  }
+  const addFromPalette = sessionStorage.getItem('mhzaly_add_customer');
+  if (addFromPalette) sessionStorage.removeItem('mhzaly_add_customer');
+
   renderTable();
   root.querySelector('#customerSearch').addEventListener('input', renderTable);
+  if (addFromPalette) setTimeout(() => openForm(null), 80);
 
   function openForm(existing) {
     const c = existing || {};

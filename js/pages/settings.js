@@ -336,6 +336,7 @@ export function render(root) {
             <button class="btn btn-ghost" id="importBackup">${icon('upload')} Restore backup</button>
             <input type="file" id="backupFile" accept="application/json,.json" hidden />
           </div>
+          <p class="small muted" id="lastBackupHint" style="margin:10px 0 0"></p>
           <div class="alert-box mt" style="background:#f0fdfa;border-color:#99f6e4;color:#115e59">
             ${icon('alert')}
             <div>Cloud sync keeps your shop on every device you log in from. A backup file is an extra safety copy you can restore at any time.</div>
@@ -628,9 +629,21 @@ export function render(root) {
     printReceipt(latest || sampleSale());
   });
 
+  const backupHint = root.querySelector('#lastBackupHint');
+  const paintBackupHint = () => {
+    if (!backupHint) return;
+    const last = localStorage.getItem('mhzaly_last_backup');
+    backupHint.textContent = last
+      ? `Last backup: ${new Date(last).toLocaleString('en-GB')}`
+      : 'Abhi tak backup nahi liya — pehla backup abhi lein.';
+  };
+  paintBackupHint();
+
   root.querySelector('#exportBackup').addEventListener('click', () => {
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     downloadFile(`mhzaly-backup-${shop}-${stamp}.json`, exportDb());
+    localStorage.setItem('mhzaly_last_backup', new Date().toISOString());
+    paintBackupHint();
     toast('Backup downloaded');
   });
 

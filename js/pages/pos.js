@@ -54,6 +54,7 @@ export function render(root) {
           <div class="field mt-sm">
             <label>Search / scan product</label>
             <input class="input" id="posSearch" placeholder="Name, salt, batch, SKU ya barcode — Enter dabayein" autocomplete="off" />
+            <div class="hint" style="margin-top:6px">F2 search focus · F4 checkout · Enter se item add</div>
           </div>
           <div id="posProductList" class="pos-list">${renderProductList(db.products, cart)}</div>
         </div>
@@ -65,7 +66,10 @@ export function render(root) {
           <div id="posCart" class="pos-cart">${renderCart(cart)}</div>
 
           <div class="field" style="margin-top:12px">
-            <label>Customer name (optional)</label>
+            <div class="flex-between" style="gap:8px; align-items:center">
+              <label for="posCustomer">Customer name (optional)</label>
+              <button class="btn btn-ghost btn-sm" id="posAddCustomer" type="button" title="Naya customer add karein">${icon('plus')} New</button>
+            </div>
             <input class="input" id="posCustomer" list="posCustomerList" placeholder="Walk-in" autocomplete="off" />
             <datalist id="posCustomerList">
               ${db.customers.map((c) => `<option value="${esc(c.name)}"></option>`).join('')}
@@ -142,7 +146,7 @@ export function render(root) {
   }
 
   function refresh() {
-    listEl.innerHTML = renderProductList(db.products, cart);
+    listEl.innerHTML = renderProductList(filteredProducts(), cart);
     cartEl.innerHTML = renderCart(cart);
     const { subtotal, discount, rate, tax, total } = cartTotals();
     const subEl = root.querySelector('#posSubtotal');
@@ -297,6 +301,64 @@ export function render(root) {
   root.querySelector('#posRx').addEventListener('input', (e) => {
     rxNote = e.target.value;
   });
+
+  function openQuickCustomer() {
+    openModal({
+      title: 'New customer',
+      subtitle: 'POS se seedha customer khata banayein',
+      body: `
+        <div class="owner-form-grid">
+          <label style="grid-column:1/-1">Customer name
+            <input id="qcName" placeholder="e.g. Ali Khan" autocomplete="off" />
+          </label>
+          <label>Phone / WhatsApp
+            <input id="qcPhone" placeholder="03xx-xxxxxxx" inputmode="tel" />
+          </label>
+          <label>Tax / NTN (optional)
+            <input id="qcTax" placeholder="Buyer tax number" autocomplete="off" />
+          </label>
+        </div>`,
+      footer: `<button class="btn btn-ghost" data-cancel>Cancel</button>
+               <button class="btn btn-primary" id="qcSave">${icon('check')} Save customer</button>`,
+      onMount: (bd) => {
+        bd.querySelector('[data-cancel]').addEventListener('click', () => bd.remove());
+        const doSave = () => {
+          const name = bd.querySelector('#qcName').value.trim();
+          const phone = bd.querySelector('#qcPhone').value.trim();
+          const tax = bd.querySelector('#qcTax').value.trim();
+          if (!name) return toast('Customer ka naam likhein', 'error');
+          let c = db.customers.find((x) => String(x.name || '').toLowerCase() === name.toLowerCase());
+          const isNew = !c;
+          if (!c) {
+            c = { id: uid('cust'), name, phone, taxNumber: tax, balance: 0, createdAt: new Date().toISOString() };
+            db.customers.push(c);
+          } else {
+            if (phone) c.phone = phone;
+            if (tax) c.taxNumber = tax;
+            c.updatedAt = new Date().toISOString();
+          }
+          save();
+          customerName = name;
+          customerPhone = c.phone || '';
+          customerTax = c.taxNumber || '';
+          root.querySelector('#posCustomer').value = name;
+          root.querySelector('#posPhone').value = customerPhone;
+          root.querySelector('#posTax').value = customerTax;
+          const dl = root.querySelector('#posCustomerList');
+          if (dl) dl.innerHTML = db.customers.map((x) => `<option value="${esc(x.name)}"></option>`).join('');
+          bd.remove();
+          toast(isNew ? 'Customer add ho gaya' : 'Customer update ho gaya', 'success');
+        };
+        bd.querySelector('#qcSave').addEventListener('click', doSave);
+        bd.querySelector('#qcName').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') doSave();
+        });
+        setTimeout(() => bd.querySelector('#qcName').focus(), 60);
+      },
+    });
+  }
+
+  root.querySelector('#posAddCustomer').addEventListener('click', openQuickCustomer);
 
   discountEl.addEventListener('input', (e) => {
     discountValue = Number(e.target.value) || 0;
@@ -477,6 +539,29 @@ export function render(root) {
     clearCart();
     showSaleComplete(sale);
   });
+
+  const onPosKey = (e) => {
+    if (!root.isConnected) {
+      document.removeEventListener('keydown', onPosKey);
+      if (window.__mhzalyPosKey === onPosKey) window.__mhzalyPosKey = null;
+      return;
+    }
+    if (document.querySelector('.owner-modal-backdrop')) return;
+    if (e.key === 'F2') {
+      e.preventDefault();
+      search.focus();
+      search.select();
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      if (!checkoutBtn.disabled) checkoutBtn.click();
+    } else if (e.key === 'Escape' && document.activeElement === search) {
+      search.value = '';
+      listEl.innerHTML = renderProductList(db.products, cart);
+    }
+  };
+  if (window.__mhzalyPosKey) document.removeEventListener('keydown', window.__mhzalyPosKey);
+  window.__mhzalyPosKey = onPosKey;
+  document.addEventListener('keydown', onPosKey);
 
   refresh();
 }

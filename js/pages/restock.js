@@ -46,8 +46,11 @@ function planText(plan, rows) {
   const lines = [
     `mhzaly Smart Restock — ${shop}`,
     `Sales window: ${plan.days} din · Lead time: ${plan.leadDays} din · Cover: ${plan.coverDays} din`,
+    plan.totals.expiredUnits
+      ? `Note: ${plan.totals.expiredUnits} expired units (${money(plan.totals.expiredValue)}) restock hisaab se bahar rakhi gayi.`
+      : '',
     '',
-  ];
+  ].filter(Boolean);
   if (!rows.length) {
     lines.push('Koi restock item nahi — stock theek hai.');
   } else {
@@ -235,7 +238,8 @@ export function render(root) {
       <div><div class="lbl">Reorder now</div><div class="val">${plan.totals.reorderCount}</div></div>
       <div><div class="lbl">Units to order</div><div class="val">${plan.totals.units}</div></div>
       <div><div class="lbl">Estimated purchase</div><div class="val">${money(plan.totals.cost)}</div></div>
-      <div><div class="lbl">Dead stock value</div><div class="val">${money(plan.totals.deadValue)}</div></div>`;
+      <div><div class="lbl">Dead stock value</div><div class="val">${money(plan.totals.deadValue)}</div></div>
+      ${plan.totals.expiredUnits ? `<div><div class="lbl">Expired ignored</div><div class="val text-warn">${plan.totals.expiredUnits} units · ${money(plan.totals.expiredValue)}</div></div>` : ''}`;
 
     metaEl.textContent = `${plan.rows.length} products · ${plan.totals.reorderCount} need reorder · ${plan.totals.units} units`;
 
@@ -253,7 +257,7 @@ export function render(root) {
           <b>${esc(row.product.name)}</b>
           <div class="pos-meta">${esc(row.product.category || 'General')}${row.product.sku ? ` · SKU ${esc(row.product.sku)}` : ''}</div>
         </td>
-        <td style="text-align:right">${row.stock}</td>
+        <td style="text-align:right">${row.stock}${row.expiredQty ? `<div class="pos-meta text-warn">${row.expiredQty} expired</div>` : ''}</td>
         <td style="text-align:right">${row.sold}</td>
         <td style="text-align:right">${row.velocity ? row.velocity.toFixed(2) : '0'}</td>
         <td class="${coverWarn ? 'text-warn' : ''}" style="text-align:right">${cover}</td>
@@ -295,13 +299,14 @@ export function render(root) {
 
   root.querySelector('#restockExport').addEventListener('click', () => {
     if (!lastPlan) return;
-    const rows = [['Product', 'SKU', 'Category', 'Stock', 'Sold', 'Daily avg', 'Cover days', 'Suggested order', 'Estimated cost', 'Status']];
+    const rows = [['Product', 'SKU', 'Category', 'Valid stock', 'Expired ignored', 'Sold', 'Daily avg', 'Cover days', 'Suggested order', 'Estimated cost', 'Status']];
     for (const row of lastRows) {
       rows.push([
         row.product.name || '',
         row.product.sku || '',
         row.product.category || '',
         row.stock,
+        row.expiredQty || 0,
         row.sold,
         row.velocity.toFixed(2),
         row.cover == null ? '' : Math.round(row.cover),

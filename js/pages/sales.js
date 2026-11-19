@@ -168,7 +168,8 @@ export function render(root) {
         const matchesQuery =
           !q ||
           String(s.invoiceNo || s.id).toLowerCase().includes(q) ||
-          String(s.customerName || '').toLowerCase().includes(q);
+          String(s.customerName || '').toLowerCase().includes(q) ||
+          String(s.customerPhone || '').toLowerCase().includes(q);
         const matchesRange = !from || new Date(s.createdAt || 0) >= from;
         const matchesMethod = method === 'all' || (s.paymentMethod || 'Cash') === method;
         return matchesQuery && matchesRange && matchesMethod;
@@ -253,4 +254,11 @@ export function render(root) {
     downloadFile(`mhzaly-sales-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
     toast('Sales exported', 'success');
   });
+
+  const openSaleId = sessionStorage.getItem('mhzaly_open_sale');
+  if (openSaleId) {
+    sessionStorage.removeItem('mhzaly_open_sale');
+    const sale = db.sales.find((s) => s.id === openSaleId);
+    if (sale) setTimeout(() => showInvoice(sale), 100);
+  }
 }

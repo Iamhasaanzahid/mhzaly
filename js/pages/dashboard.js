@@ -69,6 +69,14 @@ export function render(root) {
   const todaySales = db.sales.filter((s) => new Date(s.createdAt || 0) >= todayStart);
   const todayTotal = todaySales.reduce((a, s) => a + (Number(s.total) || 0), 0);
   const todayProfit = todaySales.reduce((a, s) => a + saleProfit(s), 0);
+  const cashToday = todaySales
+    .filter((s) => (s.paymentMethod || 'Cash') !== 'Udhaar')
+    .reduce((a, s) => a + (Number(s.total) || 0), 0);
+  const udhaarToday = todaySales
+    .filter((s) => (s.paymentMethod || 'Cash') === 'Udhaar')
+    .reduce((a, s) => a + (Number(s.total) || 0), 0);
+  const stockCost = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
+  const stockRetail = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.price) || 0), 0);
 
   const planLabel = db.settings._planLabel || '—';
   const daysLeft = db.settings._daysLeft;
@@ -159,6 +167,14 @@ export function render(root) {
       ${pharmacy ? kpi('calendar', expiredCount ? 'amber' : 'teal', 'Expiry Alerts', expiring.length, expiredCount ? `${expiredCount} expired` : '90 din ke andar') : ''}
       ${kpi('sparkle', 'teal', 'Udhaar', money(receivable), 'Customers se lena hai')}
       ${kpi('calendar', 'slate', 'Plan', planLabel, daysLeft == null ? '—' : daysLeft + ' din baqi')}
+    </div>
+
+    <div class="stat-strip mt">
+      <div><div class="lbl">Cash collected today</div><div class="val text-ok">${money(cashToday)}</div></div>
+      <div><div class="lbl">Udhaar today</div><div class="val ${udhaarToday ? 'text-warn' : ''}">${money(udhaarToday)}</div></div>
+      <div><div class="lbl">Stock at cost</div><div class="val">${money(stockCost)}</div></div>
+      <div><div class="lbl">Stock at retail</div><div class="val">${money(stockRetail)}</div></div>
+      <div><div class="lbl">Potential margin</div><div class="val text-ok">${money(stockRetail - stockCost)}</div></div>
     </div>
 
     <div class="card ai-insight">
