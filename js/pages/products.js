@@ -6,7 +6,7 @@ import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { parseCsv, toCsv, readFileText } from '../csv.js';
-import { isPharmacy, expiryState, expiryBadge } from '../pharmacy.js';
+import { isPharmacy, expiryBadge, productBatches, nearestBatch, productExpiryState, addBatch, removeBatch, writeOffBatch, syncLegacyBatch, ensureBatchesFromLegacy } from '../pharmacy.js';
 
 const CSV_TEMPLATE = `Name,Category,SKU,Unit,Cost,Price,Stock,Low Stock,Salt,Batch,Expiry,Manufacturer,Rack,Rx
 Basmati Rice 1kg,Grocery,1002,kg,230,280,10,10,,,,,
@@ -112,7 +112,7 @@ function importProducts(text) {
 
     if (price === null || !Number.isFinite(price) || price <= 0) { skipped += 1; continue; }
 
-    db.products.push({
+    const newProduct = {
       id: uid('prd'),
       name,
       category: data.category || 'General',
@@ -130,7 +130,18 @@ function importProducts(text) {
       rx: /^(1|true|yes|y|rx)$/i.test(data.rx || ''),
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    if ((newProduct.batch || newProduct.expiry) && newProduct.stock > 0) {
+      newProduct.batches = [{
+        id: uid('bat'),
+        batch: newProduct.batch,
+        expiry: newProduct.expiry,
+        qty: newProduct.stock,
+        cost: newProduct.cost,
+        receivedAt: now,
+      }];
+    }
+    db.products.push(newProduct);
     added += 1;
   }
 
@@ -187,7 +198,7 @@ export function render(root) {
                 <th style="text-align:right">Price</th>
                 <th style="text-align:right">Stock</th>
                 <th style="text-align:right">Low</th>
-                <th style="width:120px"></th>
+                <th style="width:180px"></th>
               </tr>
             </thead>
             <tbody id="productTableBody"></tbody>
@@ -216,17 +227,18 @@ export function render(root) {
     const lowOnly = lowOnlyEl.checked;
     const expiryOnly = !!(pharmacy && expiryOnlyEl && expiryOnlyEl.checked);
     const filtered = db.products.filter((p) => {
+      const batches = productBatches(p);
       const matchesQuery =
         !q ||
         String(p.name || '').toLowerCase().includes(q) ||
         String(p.sku || '').toLowerCase().includes(q) ||
         String(p.category || '').toLowerCase().includes(q) ||
         String(p.salt || '').toLowerCase().includes(q) ||
-        String(p.batch || '').toLowerCase().includes(q) ||
-        String(p.manufacturer || '').toLowerCase().includes(q);
+        String(p.manufacturer || '').toLowerCase().includes(q) ||
+        batches.some((b) => String(b.batch || '').toLowerCase().includes(q));
       const matchesCategory = category === 'all' || (p.category || 'General') === category;
       const isLow = (p.stock ?? 0) <= (p.lowStock ?? 5);
-      const exp = pharmacy ? expiryState(p.expiry) : null;
+      const exp = pharmacy ? productExpiryState(p) : null;
       const matchesExpiry = !expiryOnly || (exp && (exp.state === 'expired' || (exp.days !== null && exp.days <= 90)));
       return matchesQuery && matchesCategory && (!lowOnly || isLow) && matchesExpiry;
     });
@@ -240,19 +252,23 @@ export function render(root) {
     root.querySelector('#productTableBody').innerHTML = filtered
       .map((p) => {
         const low = (p.stock ?? 0) <= (p.lowStock ?? 5);
+        const batches = productBatches(p);
+        const nb = nearestBatch(p);
         return `
       <tr>
         <td><b>${esc(p.name)}</b></td>
         <td>${esc(p.category || '')}</td>
         ${pharmacy ? `<td>${esc(p.salt || '')}</td>
-        <td style="text-align:right"><span class="mono">${esc(p.batch || '')}</span></td>
-        <td style="text-align:right">${expiryBadge(p.expiry)}</td>` : ''}
+        <td style="text-align:right"><span class="mono">${esc(nb ? nb.batch : '')}</span>${batches.length > 1 ? ` <span class="badge">${batches.length}</span>` : ''}</td>
+        <td style="text-align:right">${expiryBadge(nb ? nb.expiry : '')}</td>` : ''}
         <td style="text-align:right"><span class="mono">${esc(p.sku || '')}</span></td>
         <td style="text-align:right">${money(p.cost)}</td>
         <td style="text-align:right">${money(p.price)}</td>
         <td style="text-align:right">${low ? `<span class="badge ${(p.stock ?? 0) === 0 ? 'danger' : 'warn'}">${esc(p.stock || 0)}</span>` : esc(p.stock || 0)}</td>
         <td style="text-align:right">${esc(p.lowStock || 5)}</td>
         <td style="text-align:right">
+          ${pharmacy ? `<button class="btn btn-ghost btn-sm" data-batches="${esc(p.id)}" title="Batches">${icon('bag')}</button>
+          <button class="btn btn-ghost btn-sm" data-writeoff="${esc(p.id)}" title="Expiry write-off">${icon('alert')}</button>` : ''}
           <button class="btn btn-ghost btn-sm" data-edit="${esc(p.id)}" title="Edit">${icon('settings')}</button>
           <button class="btn btn-ghost btn-sm" data-del="${esc(p.id)}" title="Delete">${icon('trash')}</button>
         </td>
@@ -302,7 +318,7 @@ export function render(root) {
             <input id="pfUnit" value="${esc(p.unit || 'pcs')}" placeholder="pcs / kg / pack" />
           </label>
           ${pharmacy ? `
-          <div style="grid-column:1/-1;margin-top:4px"><b class="small">Pharmacy details</b> <span class="hint">— salt, batch aur expiry zaroor bharein</span></div>
+          <div style="grid-column:1/-1;margin-top:4px"><b class="small">Pharmacy details</b> <span class="hint">— salt, batch aur expiry bharein. Multiple batches ke liye product row ka Batches button use karein.</span></div>
           <label style="grid-column:1/-1">Salt / Formula
             <input id="pfSalt" value="${esc(p.salt || '')}" placeholder="e.g. Paracetamol 500mg" />
           </label>
@@ -356,11 +372,27 @@ export function render(root) {
             updatedAt: new Date().toISOString(),
           };
 
+          const now = new Date().toISOString();
+          if (pharmacy && (data.batch || data.expiry) && stock > 0) {
+            const hasBatches = Array.isArray(p.batches) && p.batches.length > 0;
+            if (!isEdit || !hasBatches) {
+              data.batches = [{
+                id: uid('bat'),
+                batch: data.batch,
+                expiry: data.expiry,
+                qty: stock,
+                cost,
+                receivedAt: now,
+              }];
+            }
+          }
+
           if (isEdit) {
             Object.assign(p, data);
+            syncLegacyBatch(p);
             toast('Product updated', 'success');
           } else {
-            db.products.push({ id: uid('prd'), createdAt: new Date().toISOString(), ...data });
+            db.products.push({ id: uid('prd'), createdAt: now, ...data });
             toast('Product added', 'success');
           }
           save();
@@ -373,6 +405,152 @@ export function render(root) {
           if (e.key === 'Enter') doSave();
         });
         setTimeout(() => bd.querySelector('#pfName').focus(), 60);
+      },
+    });
+  }
+
+  function ensureLegacyBatch(p) {
+    ensureBatchesFromLegacy(p);
+  }
+
+  function openBatches(p) {
+    ensureLegacyBatch(p);
+    const batches = productBatches(p);
+    const total = batches.reduce((a, b) => a + b.qty, 0);
+    const stock = Number(p.stock) || 0;
+
+    openModal({
+      title: `${p.name} — Batches`,
+      subtitle: 'FEFO: sab se pehle expire hone wala batch pehle sale hoga',
+      body: `
+        <div class="table-wrap">
+          <table style="width:100%">
+            <thead><tr><th style="text-align:left">Batch</th><th style="text-align:right">Expiry</th><th style="text-align:right">Qty</th><th style="text-align:right">Cost</th><th style="width:50px"></th></tr></thead>
+            <tbody>
+              ${batches.length ? batches.map((b) => `<tr>
+                <td><span class="mono">${esc(b.batch || '—')}</span></td>
+                <td style="text-align:right">${expiryBadge(b.expiry)}</td>
+                <td style="text-align:right">${esc(b.qty)}</td>
+                <td style="text-align:right">${money(b.cost)}</td>
+                <td style="text-align:right"><button class="btn btn-ghost btn-sm" data-del-batch="${esc(b.id)}" title="Delete batch">${icon('trash')}</button></td>
+              </tr>`).join('') : `<tr><td colspan="5"><div class="empty-state">Koi batch nahi. Neeche se pehla batch add karein.</div></td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        ${total !== stock ? `<div class="alert-box mt" style="background:#fffbeb;border-color:#f59e0b;color:#92400e">${icon('alert')}<div>Batch total <b>${total}</b> hai lekin product stock <b>${stock}</b> hai. Stock adjust karein ya batch qty theek karein.</div></div>` : ''}
+        <div class="owner-form-grid mt">
+          <label>Batch no
+            <input id="bBatch" placeholder="e.g. B-2291" />
+          </label>
+          <label>Expiry date
+            <input id="bExpiry" type="date" />
+          </label>
+          <label>Quantity
+            <input id="bQty" type="number" min="1" step="1" value="1" />
+          </label>
+          <label>Cost per unit (${esc(db.settings.currency || 'Rs')})
+            <input id="bCost" type="number" min="0" step="0.01" value="${Number(p.cost) || 0}" />
+          </label>
+        </div>`,
+      footer: `<button class="btn btn-ghost" data-cancel>Close</button>
+               <button class="btn btn-primary" id="batchAdd">${icon('plus')} Add batch</button>`,
+      onMount: (bd) => {
+        bd.querySelector('[data-cancel]').addEventListener('click', () => bd.remove());
+        bd.querySelectorAll('[data-del-batch]').forEach((btn) => btn.addEventListener('click', () => {
+          const b = batches.find((x) => x.id === btn.dataset.delBatch);
+          if (!b) return;
+          confirmDialog(`Batch "${b.batch || '—'}" delete karein? ${b.qty} units stock se kam ho jayengi.`, () => {
+            removeBatch(p, b.id);
+            save();
+            bd.remove();
+            renderTable();
+            openBatches(p);
+            toast('Batch delete ho gaya', 'success');
+          });
+        }));
+        bd.querySelector('#batchAdd').addEventListener('click', () => {
+          const batch = bd.querySelector('#bBatch').value.trim();
+          const expiry = bd.querySelector('#bExpiry').value;
+          const qty = Number(bd.querySelector('#bQty').value || 0);
+          const cost = Number(bd.querySelector('#bCost').value || 0);
+          if (!batch) return toast('Batch number likhein', 'error');
+          if (!expiry) return toast('Expiry date chunein', 'error');
+          if (qty <= 0) return toast('Quantity 0 se zyada likhein', 'error');
+          addBatch(p, { batch, expiry, qty, cost });
+          save();
+          bd.remove();
+          renderTable();
+          openBatches(p);
+          toast('Batch add ho gaya', 'success');
+        });
+      },
+    });
+  }
+
+  function openWriteOff(p) {
+    ensureLegacyBatch(p);
+    const batches = productBatches(p);
+    if (!batches.length) return toast('Pehle batch add karein', 'error');
+
+    openModal({
+      title: `${p.name} — Expiry write-off`,
+      subtitle: 'Expired / damaged stock ko stock se kam karein',
+      body: `
+        <div class="owner-form-grid">
+          <label style="grid-column:1/-1">Batch
+            <select id="woBatch">
+              ${batches.map((b) => `<option value="${esc(b.id)}">${esc(b.batch || '—')} · ${esc(b.expiry || 'no expiry')} · ${b.qty} units</option>`).join('')}
+            </select>
+          </label>
+          <label>Quantity to write off
+            <input id="woQty" type="number" min="1" step="1" value="1" />
+          </label>
+          <label>Reason
+            <select id="woReason">
+              <option value="Expired">Expired</option>
+              <option value="Damaged">Damaged</option>
+              <option value="Supplier return">Supplier return</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint mt">Write-off "Expiry loss" expense mein record hoga, taake profit report sahi rahe.</p>`,
+      footer: `<button class="btn btn-ghost" data-cancel>Cancel</button>
+               <button class="btn btn-primary" id="woSave">${icon('check')} Write off</button>`,
+      onMount: (bd) => {
+        const sel = bd.querySelector('#woBatch');
+        const qtyEl = bd.querySelector('#woQty');
+        const syncMax = () => {
+          const b = batches.find((x) => x.id === sel.value);
+          qtyEl.max = b ? b.qty : 1;
+          qtyEl.value = b ? Math.min(Number(qtyEl.value) || 1, b.qty) : 1;
+        };
+        sel.addEventListener('change', syncMax);
+        syncMax();
+        bd.querySelector('[data-cancel]').addEventListener('click', () => bd.remove());
+        bd.querySelector('#woSave').addEventListener('click', () => {
+          const b = batches.find((x) => x.id === sel.value);
+          if (!b) return toast('Batch select karein', 'error');
+          const qty = Math.min(Number(qtyEl.value || 0), b.qty);
+          if (qty <= 0) return toast('Quantity 0 se zyada likhein', 'error');
+          const reason = bd.querySelector('#woReason').value;
+          const res = writeOffBatch(p, b.id, qty, reason);
+          if (!res) return toast('Write-off nahi ho saka', 'error');
+          if (res.loss > 0) {
+            db.expenses.push({
+              id: uid('exp'),
+              title: `Expiry write-off: ${p.name}`,
+              category: 'Expiry loss',
+              amount: Math.round(res.loss * 100) / 100,
+              note: `${res.qty} units · batch ${res.batch.batch || '—'} · ${reason}`,
+              createdAt: new Date().toISOString(),
+            });
+          }
+          save();
+          renderTable();
+          bd.remove();
+          toast(`Write-off ho gaya: ${res.qty} units`, 'success');
+        });
       },
     });
   }
@@ -438,6 +616,18 @@ export function render(root) {
   root.querySelector('#importProducts').addEventListener('click', openImportModal);
 
   root.querySelector('#productTableBody').addEventListener('click', (e) => {
+    const batchBtn = e.target.closest('[data-batches]');
+    if (batchBtn) {
+      const p = db.products.find((x) => x.id === batchBtn.dataset.batches);
+      if (p) openBatches(p);
+      return;
+    }
+    const woBtn = e.target.closest('[data-writeoff]');
+    if (woBtn) {
+      const p = db.products.find((x) => x.id === woBtn.dataset.writeoff);
+      if (p) openWriteOff(p);
+      return;
+    }
     const editBtn = e.target.closest('[data-edit]');
     if (editBtn) {
       const p = db.products.find((x) => x.id === editBtn.dataset.edit);

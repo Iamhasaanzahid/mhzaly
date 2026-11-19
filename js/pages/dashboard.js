@@ -275,7 +275,7 @@ export function render(root) {
                   .slice(0, 6)
                   .map(
                     (p) =>
-                      `<tr><td>${esc(p.name)}</td><td style="text-align:right"><span class="mono">${esc(p.batch || '—')}</span></td><td style="text-align:right"><span class="badge ${p._exp.state === 'expired' ? 'danger' : p._exp.state === 'critical' ? 'danger' : 'warn'}">${p._exp.state === 'expired' ? 'Expired' : p._exp.days === 0 ? 'Today' : p._exp.days + 'd'}</span></td><td style="text-align:right">${esc(p.stock)}</td></tr>`
+                      `<tr><td>${esc(p.name)}</td><td style="text-align:right"><span class="mono">${esc((p._batch && p._batch.batch) || '—')}</span></td><td style="text-align:right"><span class="badge ${p._exp.state === 'expired' ? 'danger' : p._exp.state === 'critical' ? 'danger' : 'warn'}">${p._exp.state === 'expired' ? 'Expired' : p._exp.days === 0 ? 'Today' : p._exp.days + 'd'}</span></td><td style="text-align:right">${esc(p.stock)}</td></tr>`
                   )
                   .join('')}</tbody></table></div>`
               : emptyState('No near-expiry stock. Sab theek hai.')

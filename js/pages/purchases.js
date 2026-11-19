@@ -6,7 +6,7 @@ import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal, confirmDialog, downloadFile } from '../ui.js';
 import { money } from '../receipt-share.js';
 import { toCsv } from '../csv.js';
-import { isPharmacy } from '../pharmacy.js';
+import { isPharmacy, addBatch } from '../pharmacy.js';
 
 function rangeStart(range) {
   if (range === 'all') return null;
@@ -254,17 +254,21 @@ export function render(root) {
           });
 
           if (selectedProd) {
-            selectedProd.stock = (selectedProd.stock || 0) + qty;
             selectedProd.cost = cost;
-            if (batch) selectedProd.batch = batch;
-            if (expiry) selectedProd.expiry = expiry;
+            if (batch || expiry) {
+              addBatch(selectedProd, { batch, expiry, qty, cost, supplierName });
+            } else {
+              selectedProd.stock = (selectedProd.stock || 0) + qty;
+            }
           } else {
             const prod = db.products.find((x) => x.name === productName);
             if (prod) {
-              prod.stock = (prod.stock || 0) + qty;
               prod.cost = cost;
-              if (batch) prod.batch = batch;
-              if (expiry) prod.expiry = expiry;
+              if (batch || expiry) {
+                addBatch(prod, { batch, expiry, qty, cost, supplierName });
+              } else {
+                prod.stock = (prod.stock || 0) + qty;
+              }
             }
           }
 

@@ -8,7 +8,7 @@ import { currentTaxSystem } from '../tax.js';
 import { openBusinessReview } from '../review.js';
 import { formatMoney } from '../currency.js';
 import { toCsv } from '../csv.js';
-import { isPharmacy, expiringProducts } from '../pharmacy.js';
+import { isPharmacy, expiringProducts, expiringBatches } from '../pharmacy.js';
 
 function money(n) {
   return formatMoney(n);
@@ -192,8 +192,9 @@ export function render(root) {
     const low = lowStockProducts();
     const pharmacy = isPharmacy();
     const expiring = pharmacy ? expiringProducts(90) : [];
+    const expBatches = pharmacy ? expiringBatches(90) : [];
     const expired = expiring.filter((p) => p._exp.state === 'expired');
-    const expiringValue = expiring.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
+    const expiringValue = expBatches.reduce((a, r) => a + r.value, 0);
     const inventoryCost = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.cost) || 0), 0);
     const inventorySale = db.products.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.price) || 0), 0);
     const udhaar = totalReceivable();
@@ -316,16 +317,16 @@ export function render(root) {
       </div>
 
       ${pharmacy ? `<div class="card mt">
-        <div class="card-head"><h3>Pharmacy expiry & batch report</h3><span class="right">${expiring.length} items · ${money(expiringValue)} at risk</span></div>
+        <div class="card-head"><h3>Pharmacy expiry & batch report</h3><span class="right">${expBatches.length} batches · ${money(expiringValue)} at risk</span></div>
         <div class="card-pad">
           ${
-            expiring.length
-              ? `<div class="table-wrap"><table style="width:100%"><thead><tr><th style="text-align:left">Medicine</th><th style="text-align:left">Salt / Formula</th><th style="text-align:right">Batch</th><th style="text-align:right">Expiry</th><th style="text-align:right">Stock</th><th style="text-align:right">Value</th></tr></thead><tbody>${expiring
-                  .map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.salt || '—')}</td><td style="text-align:right"><span class="mono">${esc(p.batch || '—')}</span></td><td style="text-align:right"><span class="badge ${p._exp.state === 'expired' ? 'danger' : p._exp.state === 'critical' ? 'danger' : 'warn'}">${p._exp.state === 'expired' ? 'Expired' : p._exp.days === 0 ? 'Today' : p._exp.days + 'd'}</span></td><td style="text-align:right">${esc(p.stock)}</td><td style="text-align:right">${money((Number(p.stock) || 0) * (Number(p.cost) || 0))}</td></tr>`)
+            expBatches.length
+              ? `<div class="table-wrap"><table style="width:100%"><thead><tr><th style="text-align:left">Medicine</th><th style="text-align:left">Salt / Formula</th><th style="text-align:right">Batch</th><th style="text-align:right">Expiry</th><th style="text-align:right">Qty</th><th style="text-align:right">Value</th></tr></thead><tbody>${expBatches
+                  .map((r) => `<tr><td>${esc(r.product.name)}</td><td>${esc(r.product.salt || '—')}</td><td style="text-align:right"><span class="mono">${esc(r.batch.batch || '—')}</span></td><td style="text-align:right"><span class="badge ${r.exp.state === 'expired' ? 'danger' : r.exp.state === 'critical' ? 'danger' : 'warn'}">${r.exp.state === 'expired' ? 'Expired' : r.exp.days === 0 ? 'Today' : r.exp.days + 'd'}</span></td><td style="text-align:right">${esc(r.batch.qty)}</td><td style="text-align:right">${money(r.value)}</td></tr>`)
                   .join('')}</tbody></table></div>`
               : emptyState('Koi medicine expiry ke qareeb nahi. Sab theek hai.')
           }
-          <p class="small muted mt-sm" style="margin-bottom:0">Expired medicine sale POS par block hai. Near-expiry stock ko return ya discount par sale karein.</p>
+          <p class="small muted mt-sm" style="margin-bottom:0">Expired medicine sale POS par block hai. Near-expiry stock ko return ya discount par sale karein. Products page se expiry write-off bhi kar sakte hain.</p>
         </div>
       </div>` : ''}
 
@@ -397,11 +398,11 @@ export function render(root) {
     }
     rows.push([]);
     if (isPharmacy()) {
-      const exp = expiringProducts(90);
+      const batched = expiringBatches(90);
       rows.push(['Pharmacy expiry', '']);
-      rows.push(['Medicine', 'Salt', 'Batch', 'Expiry', 'Stock', 'Value']);
-      for (const p of exp) {
-        rows.push([p.name, p.salt || '', p.batch || '', p.expiry || '', Number(p.stock) || 0, (Number(p.stock) || 0) * (Number(p.cost) || 0)]);
+      rows.push(['Medicine', 'Salt', 'Batch', 'Expiry', 'Qty', 'Value']);
+      for (const r of batched) {
+        rows.push([r.product.name, r.product.salt || '', r.batch.batch || '', r.batch.expiry || '', r.batch.qty || 0, r.value]);
       }
       rows.push([]);
     }

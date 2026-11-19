@@ -5,7 +5,7 @@
 import { db, uid, save } from '../db.js';
 import { icon, esc, toast, openModal } from '../ui.js';
 import { money, printReceipt, shareWhatsApp } from '../receipt-share.js';
-import { expiryState, expiryBadge } from '../pharmacy.js';
+import { expiryBadge, productBatches, nearestBatch, productExpiryState, allocateBatches, deductBatches, sellableQty } from '../pharmacy.js';
 
 const HELD_KEY = 'mhzaly_held_bills';
 
@@ -30,6 +30,7 @@ export function render(root) {
   let customerName = '';
   let customerPhone = '';
   let customerTax = '';
+  let rxNote = '';
   let discountType = 'amount';
   let discountValue = 0;
 
@@ -86,6 +87,11 @@ export function render(root) {
               <option value="Online">Online / Bank</option>
               <option value="Udhaar">Udhaar (credit)</option>
             </select>
+          </div>
+
+          <div class="field" id="posRxBox" hidden>
+            <label>Prescription / doctor (Rx items)</label>
+            <input class="input" id="posRx" placeholder="Doctor name / Rx number" autocomplete="off" />
           </div>
 
           <div class="pos-discount">
@@ -156,6 +162,8 @@ export function render(root) {
     const count = cart.reduce((sum, i) => sum + i.qty, 0);
     countEl.textContent = count + ' item' + (count === 1 ? '' : 's');
     checkoutBtn.disabled = cart.length === 0;
+    const rxBox = root.querySelector('#posRxBox');
+    if (rxBox) rxBox.hidden = !cart.some((i) => i.rx);
     const heldCount = root.querySelector('#heldCount');
     if (heldCount) heldCount.textContent = loadHeld().length;
   }
@@ -163,23 +171,29 @@ export function render(root) {
   function addToCart(id) {
     const p = db.products.find((x) => x.id === id);
     if (!p) return;
-    if ((p.stock || 0) <= 0) return toast('Ye product out of stock hai', 'error');
-    const exp = expiryState(p.expiry);
-    if (exp.state === 'expired') return toast(`${p.name} expired hai — sale blocked`, 'error');
-    if (exp.state === 'critical') toast(`${p.name} sirf ${exp.days} din mein expire ho raha hai`);
+    const sellable = sellableQty(p);
+    if (sellable <= 0) {
+      const exp = productExpiryState(p);
+      return toast(exp.state === 'expired' ? `${p.name} ka sab stock expired hai — sale blocked` : 'Ye product out of stock hai', 'error');
+    }
+    const exp = productExpiryState(p);
+    if (exp.state === 'critical') toast(`${p.name} ka kuch stock ${exp.days} din mein expire ho raha hai`);
+    if (sellable < (p.stock || 0)) toast(`${p.name}: ${(p.stock || 0) - sellable} units expired hain — sirf valid stock sale hoga`);
     const existing = cart.find((i) => i.id === id);
     if (existing) {
-      if (existing.qty >= (p.stock || 0)) return toast('Stock limit reached', 'error');
+      if (existing.qty >= sellable) return toast('Valid stock limit reached', 'error');
       existing.qty += 1;
     } else {
+      const nb = nearestBatch(p, { validOnly: true });
       cart.push({
         id: p.id,
         name: p.name,
         price: Number(p.price) || 0,
         qty: 1,
         salt: p.salt || '',
-        batch: p.batch || '',
-        expiry: p.expiry || '',
+        batch: nb ? nb.batch : (p.batch || ''),
+        expiry: nb ? nb.expiry : (p.expiry || ''),
+        rx: !!p.rx,
       });
     }
     refresh();
@@ -189,7 +203,7 @@ export function render(root) {
     const item = cart.find((i) => i.id === id);
     if (!item) return;
     const p = db.products.find((x) => x.id === id);
-    const max = p ? p.stock || 0 : 9999;
+    const max = p ? sellableQty(p) : 9999;
     item.qty += delta;
     if (item.qty <= 0) {
       const idx = cart.findIndex((i) => i.id === id);
@@ -280,6 +294,9 @@ export function render(root) {
   root.querySelector('#posTax').addEventListener('input', (e) => {
     customerTax = e.target.value;
   });
+  root.querySelector('#posRx').addEventListener('input', (e) => {
+    rxNote = e.target.value;
+  });
 
   discountEl.addEventListener('input', (e) => {
     discountValue = Number(e.target.value) || 0;
@@ -295,11 +312,13 @@ export function render(root) {
     customerName = '';
     customerPhone = '';
     customerTax = '';
+    rxNote = '';
     discountValue = 0;
     discountType = 'amount';
     root.querySelector('#posCustomer').value = '';
     root.querySelector('#posPhone').value = '';
     root.querySelector('#posTax').value = '';
+    root.querySelector('#posRx').value = '';
     root.querySelector('#posDiscount').value = '0';
     root.querySelector('#posDiscountType').value = 'amount';
     root.querySelector('#posPayment').value = 'Cash';
@@ -318,6 +337,7 @@ export function render(root) {
       customerName,
       customerPhone,
       customerTax,
+      rxNote,
       discountType,
       discountValue,
     });
@@ -354,16 +374,19 @@ export function render(root) {
           cart.length = 0;
           for (const item of bill.cart || []) {
             const p = db.products.find((x) => x.id === item.id);
-            if (p && (p.stock || 0) > 0) cart.push({ ...item, qty: Math.min(item.qty, p.stock || item.qty) });
+            const max = p ? sellableQty(p) : 0;
+            if (p && max > 0) cart.push({ ...item, qty: Math.min(item.qty, max) });
           }
           customerName = bill.customerName || '';
           customerPhone = bill.customerPhone || '';
           customerTax = bill.customerTax || '';
+          rxNote = bill.rxNote || '';
           discountType = bill.discountType || 'amount';
           discountValue = bill.discountValue || 0;
           root.querySelector('#posCustomer').value = customerName;
           root.querySelector('#posPhone').value = customerPhone;
           root.querySelector('#posTax').value = customerTax;
+          root.querySelector('#posRx').value = rxNote;
           root.querySelector('#posDiscountType').value = discountType;
           root.querySelector('#posDiscount').value = discountValue;
           writeHeld(loadHeld().filter((h) => h.id !== bill.id));
@@ -386,16 +409,42 @@ export function render(root) {
     const method = (root.querySelector('#posPayment') || {}).value || 'Cash';
     const name = (customerName || '').trim();
     if (method === 'Udhaar' && (!name || /^walk-in$/i.test(name))) {
-      return toast('Udhaar ke liye customer ka naam zaroori hai', 'error');
+      return toast('Udhaar ke liye customer ka naam aur phone zaroori hai', 'error');
     }
+    if (cart.some((i) => i.rx) && !String(rxNote || '').trim()) {
+      return toast('Rx medicine hai — prescription / doctor ka note likhein', 'error');
+    }
+
+    // Pre-check FEFO availability so we never save a half-complete sale.
+    for (const item of cart) {
+      const p = db.products.find((x) => x.id === item.id);
+      if (!p) return toast(`${item.name} product ab maujood nahi`, 'error');
+      const { remaining } = allocateBatches(p, item.qty);
+      if (remaining > 0) return toast(`${p.name}: valid stock kam hai`, 'error');
+    }
+
     const { subtotal, discount, rate, tax, total } = cartTotals();
+    const items = cart.map((i) => ({ ...i }));
+    for (const item of items) {
+      const p = db.products.find((x) => x.id === item.id);
+      if (!p) continue;
+      const { allocations } = allocateBatches(p, item.qty);
+      deductBatches(p, allocations);
+      item.batchAllocations = allocations;
+      if (allocations[0]) {
+        item.batch = allocations[0].batch || item.batch;
+        item.expiry = allocations[0].expiry || item.expiry;
+      }
+      p.stock = Math.max(0, (p.stock || 0) - item.qty);
+    }
+
     const sale = {
       id: uid('sale'),
       invoiceNo: 'INV-' + String(Date.now()).slice(-6),
       customerName: name || 'Walk-in',
       customerPhone: (customerPhone || '').trim(),
       customerTaxNumber: (customerTax || '').trim(),
-      items: [...cart],
+      items,
       subtotal,
       discount,
       discountType,
@@ -404,14 +453,11 @@ export function render(root) {
       tax,
       total,
       paymentMethod: method,
+      rxNote: String(rxNote || '').trim(),
       createdAt: new Date().toISOString(),
     };
 
     db.sales.push(sale);
-    for (const item of cart) {
-      const p = db.products.find((x) => x.id === item.id);
-      if (p) p.stock = Math.max(0, (p.stock || 0) - item.qty);
-    }
 
     if (method === 'Udhaar') {
       let c = db.customers.find((x) => x.name.toLowerCase() === name.toLowerCase());
@@ -439,7 +485,7 @@ function showSaleComplete(sale) {
   const rows = (sale.items || [])
     .map(
       (it) =>
-        `<tr><td>${esc(it.name)}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${money(
+        `<tr><td>${esc(it.name)}${it.batch ? `<div class="small muted">Batch ${esc(it.batch)}${it.expiry ? ' · ' + esc(it.expiry) : ''}</div>` : ''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${money(
           (Number(it.qty) || 1) * (Number(it.price) || 0)
         )}</td></tr>`
     )
@@ -458,6 +504,7 @@ function showSaleComplete(sale) {
       </div>
       ${Number(sale.discount) > 0 ? `<div class="small muted" style="text-align:center;margin:-4px 0 10px">Discount ${money(sale.discount)} applied</div>` : ''}
       ${sale.customerTaxNumber ? `<div class="small muted" style="text-align:center;margin:-4px 0 10px">Buyer tax: <b>${esc(sale.customerTaxNumber)}</b></div>` : ''}
+      ${sale.rxNote ? `<div class="small muted" style="text-align:center;margin:-4px 0 10px">Rx: <b>${esc(sale.rxNote)}</b></div>` : ''}
       ${isCash ? `
       <div class="cash-box">
         <div class="field">
@@ -519,21 +566,24 @@ function renderProductList(products, cart) {
   const qtyMap = new Map(cart.map((i) => [i.id, i.qty]));
   return products
     .map((p) => {
-      const exp = expiryState(p.expiry);
-      const hasStock = (p.stock || 0) > 0;
-      const expired = exp.state === 'expired';
+      const sellable = sellableQty(p);
+      const exp = productExpiryState(p);
+      const nb = nearestBatch(p);
+      const batches = productBatches(p);
+      const hasStock = sellable > 0;
+      const expired = !hasStock && exp.state === 'expired';
       const inCart = qtyMap.get(p.id) || 0;
-      const pharmaMeta = p.salt || p.batch || p.expiry
-        ? `<div class="pos-meta">${p.salt ? esc(p.salt) : ''}${p.salt && (p.batch || p.expiry) ? ' · ' : ''}${p.batch ? 'Batch ' + esc(p.batch) : ''}${p.expiry ? ' · ' + expiryBadge(p.expiry) : ''}</div>`
+      const pharmaMeta = p.salt || nb
+        ? `<div class="pos-meta">${p.salt ? esc(p.salt) : ''}${p.salt && nb ? ' · ' : ''}${nb ? 'Batch ' + esc(nb.batch || '—') + (batches.length > 1 ? ` (+${batches.length - 1})` : '') : ''}${nb ? ' · ' + expiryBadge(nb.expiry) : ''}</div>`
         : '';
       return `<div class="pos-row" ${expired ? 'style="opacity:.6"' : ''}>
         <div class="grow">
           <div class="pos-name">${esc(p.name)}${p.rx ? ' <span class="badge warn">Rx</span>' : ''}</div>
           <div class="pos-meta">${esc(p.sku || '')}${p.category ? ' · ' + esc(p.category) : ''}</div>
           ${pharmaMeta}
-          <div class="pos-meta">Stock: ${esc(p.stock)} · ${money(p.price)}</div>
+          <div class="pos-meta">Stock: ${esc(sellable)}${sellable !== (p.stock || 0) ? ` / ${esc(p.stock)} total` : ''} · ${money(p.price)}</div>
         </div>
-        <button class="btn btn-primary btn-sm" ${!hasStock || expired ? 'disabled' : ''} data-add="${esc(p.id)}" ${expired ? 'title="Expired — sale blocked"' : ''}>
+        <button class="btn btn-primary btn-sm" ${!hasStock ? 'disabled' : ''} data-add="${esc(p.id)}" ${expired ? 'title="Expired — sale blocked"' : ''}>
           ${icon('plus')}${inCart ? ` <span>${inCart}</span>` : ''}
         </button>
       </div>`;
