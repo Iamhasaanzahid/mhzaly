@@ -6,7 +6,8 @@
 import { createReferral } from './referral.js';
 
 const PBKDF2_ITERATIONS = 60000;
-const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
+const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days (shop sessions)
+const OWNER_TOKEN_TTL = 60 * 60 * 12; // 12 hours (owner panel)
 const MAX_DATA_BYTES = 2 * 1024 * 1024;
 const OWNER_EMAIL_DEFAULT = 'mhzcyb@gmail.com';
 const CONFIRM_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
@@ -1248,18 +1249,18 @@ async function handleOwnerLogin(request, env) {
     .first();
   if (!row) {
     await recordLoginAttempt(env, ip, endpoint, false);
-    throw new HttpError(401, 'Owner account nahi mila');
+    throw new HttpError(401, 'Email ya password galat hai');
   }
   const ok = await verifyPassword(password, row.password_hash);
   if (!ok) {
     await recordLoginAttempt(env, ip, endpoint, false);
-    throw new HttpError(401, 'Password galat hai');
+    throw new HttpError(401, 'Email ya password galat hai');
   }
 
   await recordLoginAttempt(env, ip, endpoint, true);
 
   const token = await signToken(
-    { aid: row.id, role: 'owner', exp: Math.floor(Date.now() / 1000) + TOKEN_TTL },
+    { aid: row.id, role: 'owner', exp: Math.floor(Date.now() / 1000) + OWNER_TOKEN_TTL },
     env.AUTH_SECRET
   );
   await logAudit(env, {
@@ -1569,7 +1570,7 @@ async function handleLogin(request, env) {
 
   if (!row) {
     await recordLoginAttempt(env, ip, endpoint, false);
-    throw new HttpError(401, 'Is phone number / shop code ka koi account nahi mila');
+    throw new HttpError(401, 'Phone/code ya password galat hai');
   }
 
   const access = billingAccess({
@@ -1587,7 +1588,7 @@ async function handleLogin(request, env) {
   const ok = await verifyPassword(password, row.password_hash);
   if (!ok) {
     await recordLoginAttempt(env, ip, endpoint, false);
-    throw new HttpError(401, 'Password galat hai');
+    throw new HttpError(401, 'Email ya password galat hai');
   }
 
   await recordLoginAttempt(env, ip, endpoint, true);

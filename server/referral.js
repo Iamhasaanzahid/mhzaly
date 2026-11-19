@@ -672,6 +672,22 @@ export function createReferral(deps) {
     return row;
   }
 
+  // Protect the Cloudflare Workers AI free tier from runaway automaton loops.
+  async function consumeAiQuota(env, automatonId, dailyLimit = 300) {
+    const day = new Date().toISOString().slice(0, 10);
+    const row = await env.DB.prepare(
+      'SELECT calls FROM ai_daily_usage WHERE automaton_id = ? AND day = ?'
+    ).bind(automatonId, day).first();
+    if (Number(row?.calls || 0) >= dailyLimit) {
+      throw new HttpError(429, 'Daily free AI limit reached — use local Ollama or try tomorrow');
+    }
+    await env.DB.prepare(
+      `INSERT INTO ai_daily_usage (automaton_id, day, calls)
+       VALUES (?, ?, 1)
+       ON CONFLICT(automaton_id, day) DO UPDATE SET calls = calls + 1`
+    ).bind(automatonId, day).run();
+  }
+
   /* ---------------- owner admin endpoints ---------------- */
 
   async function handleOwnerReferralOverview(request, env) {
@@ -2138,6 +2154,7 @@ export function createReferral(deps) {
 
   async function handleAutomatonAi(request, env) {
     const auto = await authAutomaton(request, env);
+    await consumeAiQuota(env, auto.id);
     const body = await readJson(request);
     const prompt = text(body.prompt, 4000);
     if (!prompt) throw new HttpError(400, 'prompt required');
@@ -2192,6 +2209,7 @@ export function createReferral(deps) {
 
   async function handleAutomatonChatCompletions(request, env) {
     const auto = await authAutomaton(request, env);
+    await consumeAiQuota(env, auto.id);
     const body = await readJson(request, 400000);
     const rawMessages = Array.isArray(body.messages) ? body.messages : [];
     const normalized = rawMessages.slice(-16).map((m) => ({
@@ -2404,6 +2422,16 @@ export function createReferral(deps) {
        ON CONFLICT(email) DO UPDATE SET status = excluded.status`
     ).bind(email, new Date().toISOString(), status).run();
     return json({ ok: true, email, status });
+  }
+
+  async function handleAutomatonOutreachKnown(request, env) {
+    await authAutomaton(request, env);
+    const { results } = await env.DB.prepare(
+      `SELECT email FROM outreach_sent WHERE status = 'sent'
+       UNION
+       SELECT email FROM outreach_leads`
+    ).all();
+    return json({ emails: (results || []).map((r) => r.email).filter(Boolean) });
   }
 
   async function handleAutomatonOutreachStats(request, env) {
@@ -2879,6 +2907,9 @@ export function createReferral(deps) {
     }
     if (path === '/api/automaton/outreach/status' && method === 'POST') {
       return handleAutomatonOutreachStatus(request, env);
+    }
+    if (path === '/api/automaton/outreach/known' && method === 'GET') {
+      return handleAutomatonOutreachKnown(request, env);
     }
     if (path === '/api/automaton/outreach/stats' && method === 'GET') {
       return handleAutomatonOutreachStats(request, env);
