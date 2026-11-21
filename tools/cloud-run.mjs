@@ -239,9 +239,14 @@ async function enrichEmails(rows, maxSites = 40) {
 }
 
 async function collectLeads() {
-  // Rotate 8 cities per day so the whole list is covered regularly.
+  // Pakistan leads are the scarce side of the 10+10 daily cap, so scan all PK
+  // cities every day; rotate only the larger international list.
   const day = Math.floor(Date.now() / 86400000);
-  const todays = ALL_CITIES ? CITIES : CITIES.filter((_, i) => i % 7 === day % 7);
+  const pkCities = CITIES.filter((c) => c.country === 'PK');
+  const intlCities = CITIES.filter((c) => c.country !== 'PK');
+  const todays = ALL_CITIES
+    ? CITIES
+    : [...pkCities, ...intlCities.filter((_, i) => i % 7 === day % 7)];
   const found = [];
   for (let i = 0; i < todays.length; i++) {
     const city = todays[i];
